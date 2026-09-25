@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  Settings,
   Film,
   Link as LinkIcon,
   Play,
@@ -8,11 +7,10 @@ import {
   AlertCircle,
   Loader2,
   X,
-  Eye,
-  EyeOff,
   ExternalLink,
   Database
 } from 'lucide-react';
+import { APP_CONFIG } from './config';
 
 interface ToastState {
   show: boolean;
@@ -27,13 +25,6 @@ export default function App() {
   const [sourceUrl, setSourceUrl] = useState('');
   const [tmdbId, setTmdbId] = useState('');
 
-  // Settings (collapsible)
-  const [showSettings, setShowSettings] = useState(false);
-  const [githubPat, setGithubPat] = useState('');
-  const [repoOwner, setRepoOwner] = useState('mr5353504-cyber');
-  const [repoName, setRepoName] = useState('my-server-');
-  const [showPatText, setShowPatText] = useState(false);
-
   // Loading states
   const [isProcessingVideo, setIsProcessingVideo] = useState(false);
   const [isSubmittingTmdb, setIsSubmittingTmdb] = useState(false);
@@ -46,27 +37,6 @@ export default function App() {
     message: ''
   });
 
-  // Load stored credentials from LocalStorage
-  useEffect(() => {
-    const savedOwner = localStorage.getItem('media_repo_owner');
-    const savedRepo = localStorage.getItem('media_repo_name');
-    const savedPat = localStorage.getItem('media_repo_pat');
-
-    if (savedOwner) setRepoOwner(savedOwner);
-    if (savedRepo) setRepoName(savedRepo);
-    if (savedPat) setGithubPat(savedPat);
-  }, []);
-
-  // Save settings whenever changed
-  const saveSettings = (owner: string, repo: string, pat: string) => {
-    setRepoOwner(owner);
-    setRepoName(repo);
-    setGithubPat(pat);
-    localStorage.setItem('media_repo_owner', owner);
-    localStorage.setItem('media_repo_name', repo);
-    localStorage.setItem('media_repo_pat', pat);
-  };
-
   const showToast = (type: 'loading' | 'success' | 'error', title: string, message: string, actionUrl?: string) => {
     setToast({ show: true, type, title, message, actionUrl });
     if (type !== 'loading') {
@@ -78,30 +48,28 @@ export default function App() {
 
   // Helper to trigger GitHub Actions repository_dispatch
   const dispatchWorkflow = async (eventType: string, payload: Record<string, any>) => {
-    const activeOwner = repoOwner.trim() || 'mr5353504-cyber';
-    const activeRepo = repoName.trim() || 'my-server-';
-    const activePat = githubPat.trim();
+    const owner = APP_CONFIG.GITHUB_OWNER;
+    const repo = APP_CONFIG.GITHUB_REPO;
+    const token = APP_CONFIG.GITHUB_PAT;
 
-    if (!activePat) {
-      setShowSettings(true);
-      throw new Error('Please configure your GitHub Personal Access Token (PAT) in Settings.');
-    }
-
-    const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(activeOwner)}/${encodeURIComponent(activeRepo)}/dispatches`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'Authorization': `Bearer ${activePat}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        event_type: eventType,
-        client_payload: payload
-      })
-    });
+    const response = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          event_type: eventType,
+          client_payload: payload
+        })
+      }
+    );
 
     if (response.status === 204) {
-      return { success: true, owner: activeOwner, repo: activeRepo };
+      return { success: true, owner, repo };
     }
 
     let errorData: any = {};
@@ -133,7 +101,7 @@ export default function App() {
       showToast(
         'success',
         'Successfully Queued!',
-        `Video processing job dispatched to ${result.owner}/${result.repo}. Transcode & upload will run in background.`,
+        `Video processing job dispatched to ${result.owner}/${result.repo}. Background transcode will execute shortly.`,
         `https://github.com/${result.owner}/${result.repo}/actions`
       );
     } catch (err: any) {
@@ -143,7 +111,7 @@ export default function App() {
     }
   };
 
-  // Action 2: "Submit" for TMDb Movie / Show ID
+  // Action 2: "Submit to Database" for TMDb Movie / Show ID
   const handleSubmitTmdb = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tmdbId.trim()) {
@@ -162,8 +130,8 @@ export default function App() {
 
       showToast(
         'success',
-        'Metadata Submitted!',
-        `TMDb ID #${tmdbId.trim()} queued for metadata retrieval and Supabase database linking.`,
+        'Submitted to Database!',
+        `TMDb ID #${tmdbId.trim()} queued for metadata extraction and Supabase database linking.`,
         `https://github.com/${result.owner}/${result.repo}/actions`
       );
     } catch (err: any) {
@@ -227,207 +195,108 @@ export default function App() {
             </div>
             <h1 className="font-semibold text-sm text-white tracking-tight">Media Engine</h1>
           </div>
-
-          {/* Settings Toggle Button */}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-              showSettings
-                ? 'bg-slate-800 text-white border-slate-700'
-                : 'text-slate-400 hover:text-slate-200 border-slate-800 hover:border-slate-700 bg-slate-900/60'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Settings</span>
-          </button>
+          <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Connected</span>
+          </div>
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col gap-6">
-        {/* Collapsible Settings Panel */}
-        {showSettings && (
-          <section className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4 transition-all">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div>
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-indigo-400" />
-                  GitHub Repository Settings
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Saved automatically in your browser's local storage.
-                </p>
-              </div>
+      {/* Main Workspace - Only the 2 requested inputs */}
+      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-16 flex flex-col justify-center gap-6">
+        {/* Input 1: Direct Video / Stream URL */}
+        <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
+          <form onSubmit={handleProcessVideo} className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
+                <LinkIcon className="w-4 h-4 text-indigo-400" />
+                Direct Video / Stream URL
+              </label>
+              <input
+                type="url"
+                value={sourceUrl}
+                onChange={(e) => setSourceUrl(e.target.value)}
+                placeholder="https://example.com/video_source.mp4"
+                required
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs text-slate-400">
+                Transcodes to H.265 and uploads to Telegram
+              </span>
               <button
-                onClick={() => setShowSettings(false)}
-                className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-slate-800"
+                type="submit"
+                disabled={isProcessingVideo}
+                className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Close
+                {isProcessingVideo ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Generate / Process</span>
+                  </>
+                )}
               </button>
             </div>
+          </form>
+        </section>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Repository Owner
-                </label>
-                <input
-                  type="text"
-                  value={repoOwner}
-                  onChange={(e) => saveSettings(e.target.value, repoName, githubPat)}
-                  placeholder="mr5353504-cyber"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Repository Name
-                </label>
-                <input
-                  type="text"
-                  value={repoName}
-                  onChange={(e) => saveSettings(repoOwner, e.target.value, githubPat)}
-                  placeholder="my-server-"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-
+        {/* Input 2: TMDb Movie / Show ID */}
+        <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
+          <form onSubmit={handleSubmitTmdb} className="space-y-4">
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-medium text-slate-300">
-                  GitHub Personal Access Token (PAT)
-                </label>
-                <a
-                  href="https://github.com/settings/tokens/new?scopes=repo"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-indigo-400 hover:text-indigo-300"
-                >
-                  Generate Token
-                </a>
-              </div>
-              <div className="relative">
-                <input
-                  type={showPatText ? 'text' : 'password'}
-                  value={githubPat}
-                  onChange={(e) => saveSettings(repoOwner, repoName, e.target.value)}
-                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-16 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPatText(!showPatText)}
-                  className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
-                >
-                  {showPatText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  <span>{showPatText ? 'Hide' : 'Show'}</span>
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">Requires <code className="text-slate-300 font-mono">repo</code> scope to trigger repository_dispatch.</p>
+              <label className="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
+                <Film className="w-4 h-4 text-indigo-400" />
+                TMDb Movie / Show ID
+              </label>
+              <input
+                type="text"
+                value={tmdbId}
+                onChange={(e) => setTmdbId(e.target.value)}
+                placeholder="e.g. 157336 (Interstellar)"
+                required
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono"
+              />
             </div>
-          </section>
-        )}
 
-        {/* Clean, Minimal Primary Inputs */}
-        <div className="space-y-6">
-          {/* Primary Input 1: Direct Video / Stream URL */}
-          <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 shadow-xl">
-            <form onSubmit={handleProcessVideo} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-200 mb-1.5 flex items-center gap-2">
-                  <LinkIcon className="w-4 h-4 text-indigo-400" />
-                  Direct Video / Stream URL
-                </label>
-                <div className="relative">
-                  <input
-                    type="url"
-                    value={sourceUrl}
-                    onChange={(e) => setSourceUrl(e.target.value)}
-                    placeholder="https://example.com/video_source.mp4"
-                    required
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-xs text-slate-400">
-                  Transcodes with FFmpeg H.265 &amp; uploads to Telegram
-                </span>
-                <button
-                  type="submit"
-                  disabled={isProcessingVideo}
-                  className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isProcessingVideo ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Processing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4 fill-current" />
-                      <span>Generate / Process</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </section>
-
-          {/* Primary Input 2: TMDb Movie / Show ID */}
-          <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 shadow-xl">
-            <form onSubmit={handleSubmitTmdb} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-200 mb-1.5 flex items-center gap-2">
-                  <Film className="w-4 h-4 text-indigo-400" />
-                  TMDb Movie / Show ID
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={tmdbId}
-                    onChange={(e) => setTmdbId(e.target.value)}
-                    placeholder="e.g. 157336 (Interstellar)"
-                    required
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                  <Database className="w-3.5 h-3.5 text-slate-400" />
-                  Links metadata to Supabase table
-                </span>
-                <button
-                  type="submit"
-                  disabled={isSubmittingTmdb}
-                  className="bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white font-medium py-2.5 px-6 rounded-xl transition-colors border border-slate-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSubmittingTmdb ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Submit</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-slate-400" />
+                Fetches metadata and links to Supabase
+              </span>
+              <button
+                type="submit"
+                disabled={isSubmittingTmdb}
+                className="bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white font-medium py-2.5 px-6 rounded-xl transition-colors border border-slate-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmittingTmdb ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-4 h-4" />
+                    <span>Submit to Database</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </section>
       </main>
 
       {/* Minimal Footer */}
       <footer className="border-t border-slate-800/60 bg-slate-950 py-4">
         <div className="max-w-3xl mx-auto px-4 flex items-center justify-between text-xs text-slate-400">
-          <span>Target Repo: <code className="text-slate-300 font-mono">{repoOwner}/{repoName}</code></span>
-          <span>Telegram: <code className="text-slate-300 font-mono">-1004408587176</code></span>
+          <span>Target: <code className="text-slate-300 font-mono">{APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</code></span>
+          <span>Telegram Channel: <code className="text-slate-300 font-mono">{APP_CONFIG.TELEGRAM_CHANNEL_ID}</code></span>
         </div>
       </footer>
     </div>

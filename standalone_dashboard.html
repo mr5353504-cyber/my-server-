@@ -59,119 +59,78 @@
         <h1 class="font-semibold text-sm text-white tracking-tight">Media Engine</h1>
       </div>
 
-      <button id="toggleSettingsBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border text-slate-400 hover:text-slate-200 border-slate-800 hover:border-slate-700 bg-slate-900/60 transition-colors">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-        <span>Settings</span>
-      </button>
+      <div class="flex items-center gap-2 text-xs text-slate-400 font-mono">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Connected</span>
+      </div>
     </div>
   </header>
 
-  <!-- Main Content -->
-  <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col gap-6">
-    <!-- Hidden / Collapsible Settings -->
-    <section id="settingsPanel" class="hidden bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+  <!-- Main Content - Only the 2 requested inputs -->
+  <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-16 flex flex-col justify-center gap-6">
+    <!-- Input 1: Direct Video / Stream URL -->
+    <section class="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
+      <form id="videoForm" class="space-y-4">
         <div>
-          <h3 class="text-sm font-semibold text-white">GitHub Repository Settings</h3>
-          <p class="text-xs text-slate-400 mt-0.5">Stored in your browser's local storage.</p>
+          <label class="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
+            <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Direct Video / Stream URL
+          </label>
+          <input type="url" id="sourceUrl" placeholder="https://example.com/video_source.mp4" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
         </div>
-        <button id="closeSettingsBtn" class="text-slate-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-slate-800">
-          Close
-        </button>
-      </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">Repository Owner</label>
-          <input type="text" id="repoOwner" placeholder="mr5353504-cyber" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500" />
+        <div class="flex items-center justify-between pt-1">
+          <span class="text-xs text-slate-400">Transcodes to H.265 and uploads to Telegram</span>
+          <button type="submit" id="processBtn" class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors text-sm shadow-lg shadow-indigo-600/25 flex items-center gap-2">
+            <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <span>Generate / Process</span>
+          </button>
         </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">Repository Name</label>
-          <input type="text" id="repoName" placeholder="my-server-" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500" />
-        </div>
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-slate-300 mb-1">GitHub Personal Access Token (PAT)</label>
-        <div class="relative">
-          <input type="password" id="githubPat" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500" />
-          <button type="button" id="togglePat" class="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-200">Show</button>
-        </div>
-        <p class="text-[11px] text-slate-500 mt-1">Requires <code class="text-slate-300">repo</code> scope for repository_dispatch.</p>
-      </div>
+      </form>
     </section>
 
-    <!-- Primary Inputs -->
-    <div class="space-y-6">
-      <!-- Input 1: Direct Video / Stream URL -->
-      <section class="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 shadow-xl">
-        <form id="videoForm" class="space-y-4">
-          <div>
-            <label class="block text-sm font-semibold text-slate-200 mb-1.5 flex items-center gap-2">
-              <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-              </svg>
-              Direct Video / Stream URL
-            </label>
-            <input type="url" id="sourceUrl" placeholder="https://example.com/video_source.mp4" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
-          </div>
+    <!-- Input 2: TMDb Movie / Show ID -->
+    <section class="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
+      <form id="tmdbForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
+            <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+            </svg>
+            TMDb Movie / Show ID
+          </label>
+          <input type="text" id="tmdbId" placeholder="e.g. 157336 (Interstellar)" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
+        </div>
 
-          <div class="flex items-center justify-between pt-1">
-            <span class="text-xs text-slate-400">Transcodes with FFmpeg H.265 &amp; uploads to Telegram</span>
-            <button type="submit" id="processBtn" class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors text-sm shadow-lg shadow-indigo-600/25 flex items-center gap-2">
-              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-              <span>Generate / Process</span>
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <!-- Input 2: TMDb Movie / Show ID -->
-      <section class="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 shadow-xl">
-        <form id="tmdbForm" class="space-y-4">
-          <div>
-            <label class="block text-sm font-semibold text-slate-200 mb-1.5 flex items-center gap-2">
-              <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-              </svg>
-              TMDb Movie / Show ID
-            </label>
-            <input type="text" id="tmdbId" placeholder="e.g. 157336 (Interstellar)" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
-          </div>
-
-          <div class="flex items-center justify-between pt-1">
-            <span class="text-xs text-slate-400">Links metadata to Supabase database</span>
-            <button type="submit" id="tmdbBtn" class="bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white font-medium py-2.5 px-6 rounded-xl transition-colors border border-slate-700 text-sm">
-              <span>Submit</span>
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
+        <div class="flex items-center justify-between pt-1">
+          <span class="text-xs text-slate-400">Fetches metadata and links to Supabase</span>
+          <button type="submit" id="tmdbBtn" class="bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white font-medium py-2.5 px-6 rounded-xl transition-colors border border-slate-700 text-sm">
+            <span>Submit to Database</span>
+          </button>
+        </div>
+      </form>
+    </section>
   </main>
 
   <!-- Footer -->
   <footer class="border-t border-slate-800/60 bg-slate-950 py-4">
     <div class="max-w-3xl mx-auto px-4 flex items-center justify-between text-xs text-slate-400">
-      <span>Target Repo: <code id="repoFooter" class="text-slate-300 font-mono">mr5353504-cyber/my-server-</code></span>
+      <span>Target: <code class="text-slate-300 font-mono">mr5353504-cyber/my-server-</code></span>
       <span>Telegram: <code class="text-slate-300 font-mono">-1004408587176</code></span>
     </div>
   </footer>
 
   <script>
-    const settingsPanel = document.getElementById('settingsPanel');
-    const toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
-    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-    const repoOwnerInput = document.getElementById('repoOwner');
-    const repoNameInput = document.getElementById('repoName');
-    const githubPatInput = document.getElementById('githubPat');
-    const togglePat = document.getElementById('togglePat');
-    const repoFooter = document.getElementById('repoFooter');
+    // Hardcoded credentials
+    const CONFIG = {
+      OWNER: 'mr5353504-cyber',
+      REPO: 'my-server-',
+      PAT: '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'
+    };
 
     const sourceUrlInput = document.getElementById('sourceUrl');
     const tmdbIdInput = document.getElementById('tmdbId');
@@ -183,43 +142,6 @@
     const toastClose = document.getElementById('toastClose');
     const toastAction = document.getElementById('toastAction');
     const toastLink = document.getElementById('toastLink');
-
-    // Default values
-    const defaultOwner = 'mr5353504-cyber';
-    const defaultRepo = 'my-server-';
-
-    // Load saved settings
-    repoOwnerInput.value = localStorage.getItem('media_repo_owner') || defaultOwner;
-    repoNameInput.value = localStorage.getItem('media_repo_name') || defaultRepo;
-    githubPatInput.value = localStorage.getItem('media_repo_pat') || '';
-
-    function updateFooter() {
-      repoFooter.textContent = `${repoOwnerInput.value || defaultOwner}/${repoNameInput.value || defaultRepo}`;
-    }
-    updateFooter();
-
-    function saveSettings() {
-      localStorage.setItem('media_repo_owner', repoOwnerInput.value.trim() || defaultOwner);
-      localStorage.setItem('media_repo_name', repoNameInput.value.trim() || defaultRepo);
-      localStorage.setItem('media_repo_pat', githubPatInput.value.trim());
-      updateFooter();
-    }
-
-    [repoOwnerInput, repoNameInput, githubPatInput].forEach(el => el.addEventListener('input', saveSettings));
-
-    toggleSettingsBtn.addEventListener('click', () => {
-      settingsPanel.classList.toggle('hidden');
-    });
-
-    closeSettingsBtn.addEventListener('click', () => {
-      settingsPanel.classList.add('hidden');
-    });
-
-    togglePat.addEventListener('click', () => {
-      const isPwd = githubPatInput.type === 'password';
-      githubPatInput.type = isPwd ? 'text' : 'password';
-      togglePat.textContent = isPwd ? 'Hide' : 'Show';
-    });
 
     function showToast(type, title, message, url) {
       toastTitle.textContent = title;
@@ -244,20 +166,11 @@
     toastClose.addEventListener('click', () => toastBox.classList.add('hidden'));
 
     async function dispatch(eventType, payload) {
-      const owner = repoOwnerInput.value.trim() || defaultOwner;
-      const repo = repoNameInput.value.trim() || defaultRepo;
-      const pat = githubPatInput.value.trim();
-
-      if (!pat) {
-        settingsPanel.classList.remove('hidden');
-        throw new Error('Please configure your GitHub Personal Access Token (PAT) in Settings.');
-      }
-
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/dispatches`, {
+      const res = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/dispatches`, {
         method: 'POST',
         headers: {
           'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `Bearer ${pat}`,
+          'Authorization': `Bearer ${CONFIG.PAT}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -267,7 +180,7 @@
       });
 
       if (res.status === 204) {
-        return { owner, repo };
+        return { owner: CONFIG.OWNER, repo: CONFIG.REPO };
       }
 
       let data = {};
@@ -309,7 +222,7 @@
           tmdb_id: id,
           source_url: sourceUrlInput.value.trim() || ''
         });
-        showToast('success', 'Metadata Submitted!', `TMDb ID #${id} queued for metadata retrieval and Supabase database linking.`, `https://github.com/${owner}/${repo}/actions`);
+        showToast('success', 'Submitted to Database!', `TMDb ID #${id} queued for metadata retrieval and Supabase database linking.`, `https://github.com/${owner}/${repo}/actions`);
       } catch (err) {
         showToast('error', 'Submission Failed', err.message);
       } finally {
