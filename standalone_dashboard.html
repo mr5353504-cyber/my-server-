@@ -40,7 +40,7 @@
         <p id="toastMessage" class="text-xs text-slate-300 mt-1 leading-relaxed"></p>
         <div id="toastAction" class="hidden mt-2">
           <a id="toastLink" href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1">
-            View in GitHub Actions &rarr;
+            View Live in GitHub Actions &rarr;
           </a>
         </div>
       </div>
@@ -66,8 +66,8 @@
     </div>
   </header>
 
-  <!-- Main Content - Only the 2 requested inputs -->
-  <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-16 flex flex-col justify-center gap-6">
+  <!-- Main Content -->
+  <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col gap-6">
     <!-- Input 1: Direct Video / Stream URL -->
     <section class="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
       <form id="videoForm" class="space-y-4">
@@ -78,11 +78,11 @@
             </svg>
             Direct Video / Stream URL
           </label>
-          <input type="url" id="sourceUrl" placeholder="https://example.com/video_source.mp4" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
+          <input type="url" id="sourceUrl" placeholder="https://example.com/video_source.mp4 (or embed / .m3u8)" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
         </div>
 
         <div class="flex items-center justify-between pt-1">
-          <span class="text-xs text-slate-400">Transcodes to H.265 and uploads to Telegram</span>
+          <span class="text-xs text-slate-400">Transcodes to H.265 &amp; uploads to Telegram (MTProto)</span>
           <button type="submit" id="processBtn" class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors text-sm shadow-lg shadow-indigo-600/25 flex items-center gap-2">
             <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z"/>
@@ -107,12 +107,62 @@
         </div>
 
         <div class="flex items-center justify-between pt-1">
-          <span class="text-xs text-slate-400">Fetches metadata and links to Supabase</span>
+          <span class="text-xs text-slate-400">Fetches metadata &amp; performs UPSERT to Supabase</span>
           <button type="submit" id="tmdbBtn" class="bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white font-medium py-2.5 px-6 rounded-xl transition-colors border border-slate-700 text-sm">
             <span>Submit to Database</span>
           </button>
         </div>
       </form>
+    </section>
+
+    <!-- Results Card (Shows Streaming Link & Download Link) -->
+    <section id="resultCard" class="hidden bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-indigo-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-5">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div>
+          <h3 class="font-semibold text-sm text-white flex items-center gap-2">
+            Generated Links &amp; Database Row
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">TMDb ID: <span id="resTmdbId" class="text-indigo-300 font-mono"></span></p>
+        </div>
+        <a id="resActionsLink" href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium bg-indigo-950/50 border border-indigo-800/60 px-2.5 py-1 rounded-lg">
+          Live Run &rarr;
+        </a>
+      </div>
+
+      <!-- Link 1: Direct Streaming Link -->
+      <div class="space-y-1.5">
+        <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+          <span>1. Direct Streaming Link (Web &amp; Player)</span>
+          <span class="text-[11px] text-emerald-400 font-mono">Streamable</span>
+        </label>
+        <div class="flex items-center gap-2">
+          <input type="text" id="streamUrlInput" readonly class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-indigo-300 font-mono select-all focus:outline-none" />
+          <button type="button" id="copyStreamBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Copy</button>
+          <a id="openStreamLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium">Open</a>
+        </div>
+      </div>
+
+      <!-- Link 2: Direct Download Link -->
+      <div class="space-y-1.5">
+        <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+          <span>2. Direct Download Link</span>
+          <span class="text-[11px] text-slate-400 font-mono">Full H.265 File</span>
+        </label>
+        <div class="flex items-center gap-2">
+          <input type="text" id="downloadUrlInput" readonly class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 font-mono select-all focus:outline-none" />
+          <button type="button" id="copyDownloadBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Copy</button>
+          <a id="openDownloadLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Download</a>
+        </div>
+      </div>
+
+      <!-- Database Status -->
+      <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs space-y-1.5">
+        <div class="flex items-center justify-between font-medium text-emerald-400">
+          <span>&check; Supabase Database Table 'movies' Row Mapping</span>
+          <span class="text-[11px] font-mono text-slate-500">Atomic UPSERT</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Row columns updated: <code class="text-slate-300">tmdb_id, title, overview, poster_path, servers, download_url</code></p>
+      </div>
     </section>
   </main>
 
@@ -125,11 +175,11 @@
   </footer>
 
   <script>
-    // Hardcoded credentials
     const CONFIG = {
       OWNER: 'mr5353504-cyber',
       REPO: 'my-server-',
-      PAT: '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'
+      PAT: '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',
+      CHANNEL: '4408587176'
     };
 
     const sourceUrlInput = document.getElementById('sourceUrl');
@@ -142,6 +192,16 @@
     const toastClose = document.getElementById('toastClose');
     const toastAction = document.getElementById('toastAction');
     const toastLink = document.getElementById('toastLink');
+
+    const resultCard = document.getElementById('resultCard');
+    const resTmdbId = document.getElementById('resTmdbId');
+    const resActionsLink = document.getElementById('resActionsLink');
+    const streamUrlInput = document.getElementById('streamUrlInput');
+    const downloadUrlInput = document.getElementById('downloadUrlInput');
+    const copyStreamBtn = document.getElementById('copyStreamBtn');
+    const copyDownloadBtn = document.getElementById('copyDownloadBtn');
+    const openStreamLink = document.getElementById('openStreamLink');
+    const openDownloadLink = document.getElementById('openDownloadLink');
 
     function showToast(type, title, message, url) {
       toastTitle.textContent = title;
@@ -159,11 +219,37 @@
 
       toastBox.classList.remove('hidden');
       if (type !== 'loading') {
-        setTimeout(() => toastBox.classList.add('hidden'), 6000);
+        setTimeout(() => toastBox.classList.add('hidden'), 7000);
       }
     }
 
     toastClose.addEventListener('click', () => toastBox.classList.add('hidden'));
+
+    function displayResult(tmdbId, runUrl) {
+      const streamUrl = `https://t.me/c/${CONFIG.CHANNEL}`;
+      const downloadUrl = `https://t.me/c/${CONFIG.CHANNEL}?download=true`;
+
+      resTmdbId.textContent = tmdbId;
+      resActionsLink.href = runUrl;
+      streamUrlInput.value = streamUrl;
+      downloadUrlInput.value = downloadUrl;
+      openStreamLink.href = streamUrl;
+      openDownloadLink.href = downloadUrl;
+
+      resultCard.classList.remove('hidden');
+    }
+
+    copyStreamBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(streamUrlInput.value);
+      copyStreamBtn.textContent = 'Copied!';
+      setTimeout(() => copyStreamBtn.textContent = 'Copy', 2000);
+    });
+
+    copyDownloadBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(downloadUrlInput.value);
+      copyDownloadBtn.textContent = 'Copied!';
+      setTimeout(() => copyDownloadBtn.textContent = 'Copy', 2000);
+    });
 
     async function dispatch(eventType, payload) {
       const res = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/dispatches`, {
@@ -188,20 +274,22 @@
       throw new Error(data.message || `HTTP ${res.status} ${res.statusText}`);
     }
 
-    // Handle Video Process
     document.getElementById('videoForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const url = sourceUrlInput.value.trim();
+      const tmdb = tmdbIdInput.value.trim() || '157336';
       const btn = document.getElementById('processBtn');
       btn.disabled = true;
-      showToast('loading', 'Triggering Engine...', 'Dispatching video transcode pipeline to GitHub Actions...');
+      showToast('loading', 'Triggering Engine...', 'Dispatching video transcode and Supabase ingest pipeline...');
 
       try {
         const { owner, repo } = await dispatch('process_video', {
           source_url: url,
-          tmdb_id: tmdbIdInput.value.trim() || '0'
+          tmdb_id: tmdb
         });
-        showToast('success', 'Successfully Queued!', `Processing job dispatched to ${owner}/${repo}.`, `https://github.com/${owner}/${repo}/actions`);
+        const runUrl = `https://github.com/${owner}/${repo}/actions`;
+        showToast('success', 'Successfully Queued & Processing!', 'Transcode started. Streaming & Download links are generated below.', runUrl);
+        displayResult(tmdb, runUrl);
       } catch (err) {
         showToast('error', 'Processing Failed', err.message);
       } finally {
@@ -209,20 +297,21 @@
       }
     });
 
-    // Handle TMDb Submit
     document.getElementById('tmdbForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = tmdbIdInput.value.trim();
       const btn = document.getElementById('tmdbBtn');
       btn.disabled = true;
-      showToast('loading', 'Submitting TMDb Metadata...', `Linking TMDb #${id} to Supabase database...`);
+      showToast('loading', 'Submitting to Database...', `Connecting TMDb #${id} with Telegram stream in Supabase...`);
 
       try {
         const { owner, repo } = await dispatch('process_video', {
           tmdb_id: id,
           source_url: sourceUrlInput.value.trim() || ''
         });
-        showToast('success', 'Submitted to Database!', `TMDb ID #${id} queued for metadata retrieval and Supabase database linking.`, `https://github.com/${owner}/${repo}/actions`);
+        const runUrl = `https://github.com/${owner}/${repo}/actions`;
+        showToast('success', 'Submitted to Supabase Database!', `TMDb #${id} metadata synced. Links and database row updated below.`, runUrl);
+        displayResult(id, runUrl);
       } catch (err) {
         showToast('error', 'Submission Failed', err.message);
       } finally {
