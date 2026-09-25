@@ -1,0 +1,6 @@
+{
+  "name": "Media Engine Admin Console",
+  "description": "Full-stack automated media processing control dashboard for triggering GitHub Actions video transcode and Supabase/Telegram ingest pipelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
