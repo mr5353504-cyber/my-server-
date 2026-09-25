@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="bn" class="dark">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>অটোমেটেড মিডিয়া ইঞ্জিন</title>
+  <title>Telegram Cloud Media Engine</title>
   <meta name="description" content="Automated media processing control dashboard for GitHub Actions video transcode and Supabase/Telegram ingest pipelines." />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -40,7 +40,7 @@
         <p id="toastMessage" class="text-xs text-slate-300 mt-1 leading-relaxed"></p>
         <div id="toastAction" class="hidden mt-2">
           <a id="toastLink" href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1">
-            গিটহাব অ্যাকশনে লাইভ টার্মিনাল দেখুন &rarr;
+            View Cloud Runner Terminal &rarr;
           </a>
         </div>
       </div>
@@ -56,12 +56,12 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
           </svg>
         </div>
-        <h1 class="font-semibold text-sm text-white tracking-tight">অটোমেটেড মিডিয়া ইঞ্জিন</h1>
+        <h1 class="font-semibold text-sm text-white tracking-tight">Telegram Cloud Media Engine</h1>
       </div>
 
       <div class="flex items-center gap-2 text-xs text-slate-400 font-mono">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>টার্গেট: mr5353504-cyber/my-server-</span>
+        <span>Target: mr5353504-cyber/my-server-</span>
       </div>
     </div>
   </header>
@@ -76,22 +76,31 @@
             <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
-            ভিডিও বা স্ট্রিম লিঙ্ক দিন
+            Source Video URL
           </label>
-          <input type="text" id="sourceUrl" placeholder="https://example.com/movie.mp4 বা .m3u8 বা টেস্ট করতে 'test' লিখুন" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
-          <p class="text-[11px] text-slate-400 mt-1.5">
-            সরাসরি MP4 লিঙ্ক, এমবেড প্লেয়ার লিঙ্ক, HLS স্ট্রিম (.m3u8), অথবা টেস্ট রানার চেক করতে <code>test</code> লিখুন।
-          </p>
+          <input type="text" id="sourceUrl" placeholder="Enter direct MP4, embed URL, HLS .m3u8, or 'test'" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
+          <div class="flex items-center justify-between text-[11px] text-slate-400 mt-2">
+            <span>Multi-thread Aria2c download &bull; Smart stream copy for files &le; 1.9GB</span>
+            <span>Type <code>test</code> for instant self-test</span>
+          </div>
         </div>
 
         <div class="flex items-center justify-between pt-2">
-          <span class="text-xs text-slate-400">বাটনে চাপ দিলে স্টেপ-বাই-স্টেপ লাইভ প্রসেসিং শুরু হবে</span>
-          <button type="submit" id="processBtn" class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors text-sm shadow-lg shadow-indigo-600/25 flex items-center gap-2">
-            <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-            <span>প্রসেস শুরু করুন</span>
-          </button>
+          <span class="text-xs text-slate-400">Ultra-fast 2GB Telegram single-file pipeline</span>
+          <div class="flex items-center gap-2.5">
+            <button type="button" id="cancelBtn" class="hidden bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-medium py-2.5 px-4 rounded-xl transition-colors text-sm flex items-center gap-1.5">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+              </svg>
+              <span>Cancel Pipeline</span>
+            </button>
+            <button type="submit" id="processBtn" class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors text-sm shadow-lg shadow-indigo-600/25 flex items-center gap-2">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+              <span>Start Pipeline</span>
+            </button>
+          </div>
         </div>
       </form>
     </section>
@@ -100,12 +109,17 @@
     <section id="trackerCard" class="hidden bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-indigo-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-6">
       <div class="flex items-center justify-between pb-3 border-b border-slate-800">
         <div>
-          <h3 id="trackerHeading" class="font-semibold text-sm text-white">রিয়েল-টাইম স্টেপ প্রসেসিং চলছে...</h3>
-          <p class="text-xs text-slate-400 mt-0.5" id="timerText">মোট সময় লেগেছে: 0 সেকেন্ড</p>
+          <h3 id="trackerHeading" class="font-semibold text-sm text-white">Real-Time Pipeline Progress</h3>
+          <p class="text-xs text-slate-400 mt-0.5" id="timerText">Elapsed Time: 0s</p>
         </div>
-        <a id="resActionsLink" href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium bg-indigo-950/50 border border-indigo-800/60 px-3 py-1.5 rounded-lg flex items-center gap-1">
-          <span>টার্মিনাল লগ</span> &rarr;
-        </a>
+        <div class="flex items-center gap-2">
+          <button type="button" id="abortBtn" class="text-xs text-rose-400 hover:text-rose-300 font-medium bg-rose-950/50 border border-rose-800/60 px-3 py-1.5 rounded-lg flex items-center gap-1">
+            <span>Abort Run</span>
+          </button>
+          <a id="resActionsLink" href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium bg-indigo-950/50 border border-indigo-800/60 px-3 py-1.5 rounded-lg flex items-center gap-1">
+            <span>Terminal Logs</span> &rarr;
+          </a>
+        </div>
       </div>
 
       <!-- 5 Interactive Steps List -->
@@ -115,10 +129,10 @@
           <div id="stepIcon1" class="mt-0.5 flex-shrink-0"></div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between">
-              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ১: লিঙ্ক বিশ্লেষণ ও যাচাইকরণ</h4>
-              <span id="stepBadge1" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">চলছে</span>
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">Step 1: URL Inspection & Protocol Validation</h4>
+              <span id="stepBadge1" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">In Progress</span>
             </div>
-            <p id="stepDesc1" class="text-xs text-slate-400 mt-1">লিঙ্কটি কি ভিডিও, এমবেড নাকি স্ট্রিম তা পরীক্ষা করে ডাউনলোডের উপযোগী করা হচ্ছে</p>
+            <p id="stepDesc1" class="text-xs text-slate-400 mt-1">Analyzing source link, video headers, and stream viability</p>
           </div>
         </div>
 
@@ -127,10 +141,10 @@
           <div id="stepIcon2" class="mt-0.5 flex-shrink-0"></div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between">
-              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ২: ক্লাউড সার্ভারে ভিডিও ডাউনলোড</h4>
-              <span id="stepBadge2" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">অপেক্ষমান</span>
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">Step 2: High-Speed Aria2c Download (16 Threads)</h4>
+              <span id="stepBadge2" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">Pending</span>
             </div>
-            <p id="stepDesc2" class="text-xs text-slate-400 mt-1">গিটহাব অ্যাকশন ক্লাউড রানারে হাই-স্পিড মাল্টি-কানেকশন দিয়ে ডাউনলোড চলছে</p>
+            <p id="stepDesc2" class="text-xs text-slate-400 mt-1">Multi-threaded cloud ingest to fetch complete media file</p>
           </div>
         </div>
 
@@ -139,10 +153,10 @@
           <div id="stepIcon3" class="mt-0.5 flex-shrink-0"></div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between">
-              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ৩: H.265 (HEVC) আল্ট্রা কমপ্রেশন</h4>
-              <span id="stepBadge3" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">অপেক্ষমান</span>
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">Step 3: Smart Stream Copy or Compression</h4>
+              <span id="stepBadge3" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">Pending</span>
             </div>
-            <p id="stepDesc3" class="text-xs text-slate-400 mt-1">FFmpeg দিয়ে কোয়ালিটি অক্ষুণ্ণ রেখে সাইজ ২ জিবির নিচে কমপ্রেস ও অপ্টিমাইজেশন</p>
+            <p id="stepDesc3" class="text-xs text-slate-400 mt-1">Direct stream copy if <=1.9GB (10-15s), or Ultrafast if >1.9GB</p>
           </div>
         </div>
 
@@ -151,10 +165,10 @@
           <div id="stepIcon4" class="mt-0.5 flex-shrink-0"></div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between">
-              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ৪: টেলিগ্রাম চ্যানেলে আপলোড</h4>
-              <span id="stepBadge4" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">অপেক্ষমান</span>
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">Step 4: Telegram Cloud Backup Upload</h4>
+              <span id="stepBadge4" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">Pending</span>
             </div>
-            <p id="stepDesc4" class="text-xs text-slate-400 mt-1">টেলিগ্রাম বট ও MTProto ইঞ্জিন দিয়ে চ্যানেলে ভিডিও আপলোড সম্পন্ন করা</p>
+            <p id="stepDesc4" class="text-xs text-slate-400 mt-1">Parallel MTProto transfer directly to your Telegram channel</p>
           </div>
         </div>
 
@@ -163,50 +177,50 @@
           <div id="stepIcon5" class="mt-0.5 flex-shrink-0"></div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between">
-              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ৫: স্ট্রিমিং ও ডাউনলোড লিংক জেনারেট</h4>
-              <span id="stepBadge5" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">অপেক্ষমান</span>
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">Step 5: Stream & Download Link Generation</h4>
+              <span id="stepBadge5" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">Pending</span>
             </div>
-            <p id="stepDesc5" class="text-xs text-slate-400 mt-1">সরাসরি স্ট্রিমিং ও হাই-স্পিড ডাউনলোড লিংক প্রস্তুত করা</p>
+            <p id="stepDesc5" class="text-xs text-slate-400 mt-1">Generating instant web playback and direct download endpoints</p>
           </div>
         </div>
       </div>
 
-      <!-- Final Links (Appears automatically when Step 4 & 5 finish) -->
+      <!-- Final Links -->
       <div id="finalLinksBox" class="hidden space-y-4 pt-3 border-t border-slate-800/80">
         <div class="flex items-center gap-2 text-xs font-semibold text-emerald-400">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
           </svg>
-          <span>টেলিগ্রাম থেকে ২টি লিংক স্বয়ংক্রিয়ভাবে তৈরি হয়েছে:</span>
+          <span>Telegram cloud links generated successfully:</span>
         </div>
 
         <!-- Link 1: Direct Streaming Link -->
         <div class="space-y-1.5">
           <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
-            <span>১. ডিরেক্ট স্ট্রিমিং লিংক (Direct Streaming Link)</span>
+            <span>1. Direct Streaming Link</span>
             <span class="text-[11px] text-emerald-400 font-mono">Stream Ready</span>
           </label>
           <div class="flex items-center gap-2">
             <input type="text" id="streamUrlInput" readonly class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-indigo-300 font-mono select-all focus:outline-none" />
-            <button type="button" id="copyStreamBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">কপি</button>
-            <a id="openStreamLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium">ওপেন</a>
+            <button type="button" id="copyStreamBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Copy</button>
+            <a id="openStreamLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium">Open</a>
           </div>
         </div>
 
         <!-- Link 2: Direct Download Link -->
         <div class="space-y-1.5">
           <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
-            <span>২. ডিরেক্ট ডাউনলোড লিংক (Direct Download Link)</span>
-            <span class="text-[11px] text-slate-400 font-mono">Full H.265 File</span>
+            <span>2. Direct Download Link</span>
+            <span class="text-[11px] text-slate-400 font-mono">Original Quality</span>
           </label>
           <div class="flex items-center gap-2">
             <input type="text" id="downloadUrlInput" readonly class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 font-mono select-all focus:outline-none" />
-            <button type="button" id="copyDownloadBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">কপি</button>
-            <a id="openDownloadLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">ডাউনলোড</a>
+            <button type="button" id="copyDownloadBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Copy</button>
+            <a id="openDownloadLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Download</a>
           </div>
         </div>
 
-        <!-- Dedicated Supabase Upload Box (Below the 2 links) -->
+        <!-- Dedicated Supabase Upload Box -->
         <div class="mt-6 pt-5 border-t border-slate-800/90 bg-slate-950/80 p-5 rounded-2xl border border-indigo-500/30 space-y-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -216,21 +230,21 @@
                 </svg>
               </div>
               <div>
-                <h4 class="font-semibold text-xs sm:text-sm text-white">সাফা বেইজে (Supabase) আপলোড সেকশন</h4>
-                <p class="text-[11px] text-slate-400">টিএমডিবি আইডি দিয়ে সাফা বেইজ ডাটাবেসে সেভ করুন</p>
+                <h4 class="font-semibold text-xs sm:text-sm text-white">Supabase Database Sync</h4>
+                <p class="text-[11px] text-slate-400">Save stream metadata into Supabase 'movies' table</p>
               </div>
             </div>
           </div>
 
           <div class="flex flex-col sm:flex-row items-center gap-3">
             <div class="w-full sm:flex-1">
-              <input type="text" id="supabaseTmdbId" value="157336" placeholder="TMDb Movie/Show ID (যেমন: 157336)" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
+              <input type="text" id="supabaseTmdbId" value="157336" placeholder="TMDb Movie/Show ID (e.g. 157336)" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
             </div>
             <button type="button" id="supabaseUploadBtn" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-medium py-2.5 px-5 rounded-xl transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm shadow-lg shadow-emerald-600/20">
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
-              <span>সাফা বেইজে আপলোড করুন</span>
+              <span>Sync to Supabase</span>
             </button>
           </div>
 
@@ -247,8 +261,8 @@
   <!-- Footer -->
   <footer class="border-t border-slate-800/60 bg-slate-950 py-4">
     <div class="max-w-3xl mx-auto px-4 flex items-center justify-between text-xs text-slate-400">
-      <span>টার্গেট: <code class="text-slate-300 font-mono">mr5353504-cyber/my-server-</code></span>
-      <span>চ্যানেল আইডি: <code class="text-slate-300 font-mono">-1004408587176</code></span>
+      <span>Repository: <code class="text-slate-300 font-mono">mr5353504-cyber/my-server-</code></span>
+      <span>Channel: <code class="text-slate-300 font-mono">-1004408587176</code></span>
     </div>
   </footer>
 
@@ -262,6 +276,8 @@
 
     const sourceUrlInput = document.getElementById('sourceUrl');
     const processBtn = document.getElementById('processBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const abortBtn = document.getElementById('abortBtn');
     const trackerCard = document.getElementById('trackerCard');
     const trackerHeading = document.getElementById('trackerHeading');
     const timerText = document.getElementById('timerText');
@@ -292,6 +308,7 @@
     let timerInterval = null;
     let pollInterval = null;
     let secondsElapsed = 0;
+    let currentRunId = null;
 
     function showToast(type, title, message, url) {
       toastTitle.textContent = title;
@@ -326,27 +343,26 @@
         card.classList.add("bg-emerald-950/20", "border-emerald-500/40", "text-emerald-300");
         icon.innerHTML = `<div class="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400"><svg class="w-3.5 h-3.5 stroke-[3]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>`;
         badge.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/40";
-        badge.textContent = "সফল (Done)";
+        badge.textContent = "Done";
       } else if (status === 'active') {
         card.classList.add("bg-indigo-950/40", "border-indigo-500/60", "text-indigo-200", "shadow-md");
         icon.innerHTML = `<div class="w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-400 flex items-center justify-center text-indigo-400"><svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></div>`;
         badge.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 animate-pulse";
-        badge.textContent = "চলছে";
+        badge.textContent = "In Progress";
       } else if (status === 'failed') {
         card.classList.add("bg-rose-950/30", "border-rose-500/50", "text-rose-300");
         icon.innerHTML = `<div class="w-6 h-6 rounded-full bg-rose-500/20 border border-rose-400 flex items-center justify-center text-rose-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>`;
         badge.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-rose-500/20 text-rose-400 border border-rose-500/40";
-        badge.textContent = "ব্যর্থ";
+        badge.textContent = "Error";
         if (errorMsg) desc.innerHTML = `<span class="text-rose-400 font-semibold">${errorMsg}</span>`;
       } else {
         card.classList.add("bg-slate-950/40", "border-slate-800/60", "text-slate-400", "opacity-60");
         icon.innerHTML = `<div class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-xs font-mono font-medium">${id}</div>`;
         badge.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500";
-        badge.textContent = "অপেক্ষমান";
+        badge.textContent = "Pending";
       }
     }
 
-    // Reset steps to initial
     function resetSteps() {
       for (let i = 1; i <= 5; i++) {
         setStep(i, 'pending');
@@ -355,31 +371,63 @@
       supabaseFeedback.classList.add('hidden');
     }
 
+    // Cancel Process
+    async function abortCurrentRun() {
+      if (currentRunId) {
+        try {
+          await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/actions/runs/${currentRunId}/cancel`, {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/vnd.github.v3+json',
+              'Authorization': `Bearer ${CONFIG.PAT}`
+            }
+          });
+        } catch (_) {}
+      }
+
+      clearInterval(timerInterval);
+      clearInterval(pollInterval);
+      processBtn.disabled = false;
+      cancelBtn.classList.add('hidden');
+
+      for (let i = 1; i <= 5; i++) {
+        const badge = document.getElementById(`stepBadge${i}`);
+        if (badge.textContent === 'In Progress') {
+          setStep(i, 'failed', 'Pipeline was cancelled by user.');
+        }
+      }
+
+      showToast('error', 'Pipeline Cancelled', 'The cloud runner was immediately stopped.');
+    }
+
+    cancelBtn.addEventListener('click', abortCurrentRun);
+    abortBtn.addEventListener('click', abortCurrentRun);
+
     // Copy handlers
     copyStreamBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(streamUrlInput.value);
-      copyStreamBtn.textContent = 'কপি হয়েছে!';
-      setTimeout(() => copyStreamBtn.textContent = 'কপি', 2000);
+      copyStreamBtn.textContent = 'Copied!';
+      setTimeout(() => copyStreamBtn.textContent = 'Copy', 2000);
     });
 
     copyDownloadBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(downloadUrlInput.value);
-      copyDownloadBtn.textContent = 'কপি হয়েছে!';
-      setTimeout(() => copyDownloadBtn.textContent = 'কপি', 2000);
+      copyDownloadBtn.textContent = 'Copied!';
+      setTimeout(() => copyDownloadBtn.textContent = 'Copy', 2000);
     });
 
-    // Step 6: Supabase Upload
+    // Supabase Upload
     supabaseUploadBtn.addEventListener('click', async () => {
       const tmdbId = supabaseTmdbId.value.trim();
       if (!tmdbId) {
-        showToast('error', 'TMDb ID প্রয়োজন', 'অনুগ্রহ করে একটি সঠিক TMDb Movie ID দিন।');
+        showToast('error', 'TMDb ID Required', 'Please provide a valid TMDb Movie ID.');
         return;
       }
 
       supabaseUploadBtn.disabled = true;
       supabaseFeedback.className = "p-3 rounded-xl border flex items-center gap-2.5 text-xs bg-indigo-950/40 border-indigo-500/50 text-indigo-300";
       supabaseFeedbackIcon.innerHTML = `<svg class="w-4 h-4 text-indigo-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>`;
-      supabaseFeedbackText.textContent = "সাফা বেইজ ডাটাবেসে সেভ করা হচ্ছে...";
+      supabaseFeedbackText.textContent = "Syncing metadata to Supabase...";
       supabaseFeedback.classList.remove('hidden');
 
       try {
@@ -407,25 +455,26 @@
         if (res.status === 204) {
           supabaseFeedback.className = "p-3 rounded-xl border flex items-center gap-2.5 text-xs bg-emerald-950/40 border-emerald-500/50 text-emerald-300";
           supabaseFeedbackIcon.innerHTML = `<svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`;
-          supabaseFeedbackText.textContent = `সাফা বেইজে সফলভাবে আপলোড সম্পন্ন হয়েছে! (TMDb #${tmdbId})`;
-          showToast('success', 'সাফা বেইজে আপলোড সফল!', `'movies' টেবিলে #${tmdbId} এর ডাটা সেভ হয়েছে।`);
+          supabaseFeedbackText.textContent = `Supabase sync completed for TMDb #${tmdbId}!`;
+          showToast('success', 'Supabase Synced', `Record for #${tmdbId} saved into 'movies' table.`);
         } else {
           throw new Error(`HTTP ${res.status}`);
         }
       } catch (err) {
         supabaseFeedback.className = "p-3 rounded-xl border flex items-center gap-2.5 text-xs bg-rose-950/40 border-rose-500/50 text-rose-300";
         supabaseFeedbackIcon.innerHTML = `<svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
-        supabaseFeedbackText.textContent = `সাফা বেইজ আপলোড ব্যর্থ: ${err.message}`;
+        supabaseFeedbackText.textContent = `Sync failed: ${err.message}`;
       } finally {
         supabaseUploadBtn.disabled = false;
       }
     });
 
-    // Form Submission: Main Pipeline
+    // Main Pipeline Submit
     document.getElementById('mediaForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const url = sourceUrlInput.value.trim();
       processBtn.disabled = true;
+      cancelBtn.classList.remove('hidden');
       resetSteps();
       trackerCard.classList.remove('hidden');
 
@@ -434,22 +483,21 @@
       clearInterval(pollInterval);
       timerInterval = setInterval(() => {
         secondsElapsed++;
-        timerText.textContent = `মোট সময় লেগেছে: ${secondsElapsed} সেকেন্ড`;
+        timerText.textContent = `Elapsed Time: ${secondsElapsed}s`;
       }, 1000);
 
-      // Step 1: Link Inspection
       setStep(1, 'active');
 
       setTimeout(async () => {
         const isValid = url.startsWith('http://') || url.startsWith('https://') || url.toLowerCase() === 'test';
         if (!isValid) {
-          setStep(1, 'failed', 'ভুল লিঙ্ক ফরম্যাট! লিঙ্কটি https:// বা http:// দিয়ে শুরু হতে হবে।');
+          setStep(1, 'failed', 'Invalid URL format. URL must start with http:// or https://');
           processBtn.disabled = false;
+          cancelBtn.classList.add('hidden');
           clearInterval(timerInterval);
           return;
         }
 
-        // Step 1 Success
         setStep(1, 'completed');
         setStep(2, 'active');
 
@@ -473,9 +521,8 @@
           if (res.status === 204) {
             const runUrl = `https://github.com/${CONFIG.OWNER}/${CONFIG.REPO}/actions`;
             resActionsLink.href = runUrl;
-            showToast('loading', 'গিটহাব রানার সক্রিয়!', 'ক্লাউড সার্ভারে ভিডিও ডাউনলোড ও প্রসেসিং চলছে...', runUrl);
+            showToast('loading', 'Cloud Runner Active', 'Multi-thread Aria2c download initiated...', runUrl);
 
-            // Poll GitHub Actions run
             pollInterval = setInterval(async () => {
               try {
                 const rRes = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/actions/runs?per_page=3`, {
@@ -486,6 +533,7 @@
                 const latest = (rData.workflow_runs || [])[0];
                 if (!latest) return;
 
+                currentRunId = latest.id;
                 resActionsLink.href = latest.html_url;
 
                 const jRes = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/actions/runs/${latest.id}/jobs`, {
@@ -513,6 +561,7 @@
                         clearInterval(timerInterval);
                         clearInterval(pollInterval);
                         processBtn.disabled = false;
+                        cancelBtn.classList.add('hidden');
 
                         const sUrl = `https://t.me/c/${CONFIG.CHANNEL}`;
                         const dUrl = `https://t.me/c/${CONFIG.CHANNEL}?download=true`;
@@ -522,12 +571,13 @@
                         openDownloadLink.href = dUrl;
                         finalLinksBox.classList.remove('hidden');
 
-                        showToast('success', 'প্রসেসিং সম্পূর্ণ!', 'ভিডিও টেলিগ্রামে আপলোড ও লিংক প্রস্তুত হয়েছে।', latest.html_url);
+                        showToast('success', 'Execution Completed', 'Video uploaded to Telegram. Links are ready.', latest.html_url);
                       } else {
-                        setStep(3, 'failed', 'গিটহাব রানারে প্রসেসিং চলাকালীন সমস্যা হয়েছে।');
+                        setStep(3, 'failed', 'Error occurred on cloud runner.');
                         clearInterval(timerInterval);
                         clearInterval(pollInterval);
                         processBtn.disabled = false;
+                        cancelBtn.classList.add('hidden');
                       }
                     }
                   }
@@ -541,6 +591,7 @@
         } catch (err) {
           setStep(2, 'failed', err.message);
           processBtn.disabled = false;
+          cancelBtn.classList.add('hidden');
           clearInterval(timerInterval);
         }
       }, 1000);
