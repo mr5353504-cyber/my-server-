@@ -3,6 +3,7 @@ import {
   Film,
   Link as LinkIcon,
   Play,
+  Square,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -14,12 +15,10 @@ import {
   Tv,
   Download,
   Clock,
-  ArrowRight,
-  Server,
   CloudLightning,
-  Sparkles,
   Send,
-  FileCheck
+  Zap,
+  Server
 } from 'lucide-react';
 import { APP_CONFIG } from './config';
 
@@ -45,8 +44,10 @@ export default function App() {
   // Input URL
   const [sourceUrl, setSourceUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Workflow tracking
+  const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [activeRunUrl, setActiveRunUrl] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isPipelineActive, setIsPipelineActive] = useState(false);
@@ -55,32 +56,32 @@ export default function App() {
   const [steps, setSteps] = useState<PipelineStep[]>([
     {
       id: 1,
-      title: 'লিঙ্ক বিশ্লেষণ ও যাচাইকরণ',
-      description: 'লিঙ্কটি কি ভিডিও, এমবেড নাকি স্ট্রিম তা পরীক্ষা করে ডাউনলোডের উপযোগী করা',
+      title: 'URL Inspection & Protocol Validation',
+      description: 'Analyzing source link, video headers, and stream viability',
       status: 'pending'
     },
     {
       id: 2,
-      title: 'ক্লাউড সার্ভারে ভিডিও ডাউনলোড',
-      description: 'গিটহাব অ্যাকশন ক্লাউড রানারে হাই-স্পিড মাল্টি-কানেকশন দিয়ে ডাউনলোড চলছে',
+      title: 'High-Speed Aria2c Download (16 Threads)',
+      description: 'Multi-threaded cloud ingest to fetch complete media file',
       status: 'pending'
     },
     {
       id: 3,
-      title: 'H.265 (HEVC) আল্ট্রা কমপ্রেশন',
-      description: 'FFmpeg দিয়ে কোয়ালিটি অক্ষুণ্ণ রেখে সাইজ ২ জিবির নিচে কমপ্রেস ও অপ্টিমাইজেশন',
+      title: 'Smart Stream Copy or Compression',
+      description: 'Direct stream copy if <=1.9GB (10-15s), or Ultrafast if >1.9GB',
       status: 'pending'
     },
     {
       id: 4,
-      title: 'টেলিগ্রাম চ্যানেলে আপলোড',
-      description: 'টেলিগ্রাম বট ও MTProto ইঞ্জিন দিয়ে চ্যানেলে ভিডিও আপলোড সম্পন্ন করা',
+      title: 'Telegram Cloud Backup Upload',
+      description: 'Parallel MTProto transfer directly to your Telegram channel',
       status: 'pending'
     },
     {
       id: 5,
-      title: 'স্ট্রিমিং ও ডাউনলোড লিংক জেনারেট',
-      description: 'সরাসরি স্ট্রিমিং ও হাই-স্পিড ডাউনলোড লিংক প্রস্তুত করা',
+      title: 'Stream & Download Link Generation',
+      description: 'Generating instant web playback and direct download endpoints',
       status: 'pending'
     }
   ]);
@@ -90,11 +91,10 @@ export default function App() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<'stream' | 'download' | null>(null);
 
-  // Supabase Section (Below the 2 links)
+  // Supabase Section
   const [tmdbIdInput, setTmdbIdInput] = useState('157336');
   const [supabaseStatus, setSupabaseStatus] = useState<StepStatus>('pending');
   const [supabaseMessage, setSupabaseMessage] = useState<string | null>(null);
-  const [supabaseMovieTitle, setSupabaseMovieTitle] = useState<string | null>(null);
 
   // Timers
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -172,8 +172,8 @@ export default function App() {
     throw new Error(errorData.message || `HTTP ${response.status}`);
   };
 
-  // Real-time polling of GitHub Actions run & logs
-  const startRealtimePolling = (targetRunId?: number) => {
+  // Real-time polling of GitHub Actions run & steps
+  const startRealtimePolling = () => {
     if (pollRef.current) clearInterval(pollRef.current);
 
     let attempts = 0;
@@ -196,6 +196,7 @@ export default function App() {
 
         if (!latestRun) return;
 
+        setActiveRunId(latestRun.id);
         setActiveRunUrl(latestRun.html_url);
 
         // Fetch jobs for latest run to inspect individual steps
@@ -214,10 +215,10 @@ export default function App() {
         const primaryJob = (jobsData.jobs || [])[0];
 
         if (primaryJob) {
-          const jobStatus = primaryJob.status; // in_progress, completed
-          const jobConclusion = primaryJob.conclusion; // success, failure
+          const jobStatus = primaryJob.status;
+          const jobConclusion = primaryJob.conclusion;
 
-          // Find the main step
+          // Steps inspection
           const execStep = primaryJob.steps.find((s: any) =>
             s.name.includes('Execute Media Processing Engine')
           );
@@ -232,11 +233,8 @@ export default function App() {
 
           if (execStep) {
             if (execStep.status === 'in_progress') {
-              // Runner is currently executing Python engine
               updateStepStatus(1, 'completed');
               updateStepStatus(2, 'completed');
-
-              // Fetch log snippet if available or progress steps realistically
               updateStepStatus(3, 'active');
             } else if (execStep.status === 'completed') {
               if (execStep.conclusion === 'success') {
@@ -260,21 +258,25 @@ export default function App() {
 
                 showToast(
                   'success',
-                  'প্রসেসিং সম্পূর্ণ হয়েছে!',
-                  'ভিডিও টেলিগ্রাম চ্যানেলে আপলোড হয়েছে এবং লিংক জেনারেট সম্পন্ন হয়েছে।',
+                  'Processing Completed',
+                  'Video uploaded to Telegram channel. Streaming and download links are ready.',
                   latestRun.html_url
                 );
+              } else if (execStep.conclusion === 'cancelled') {
+                updateStepStatus(3, 'failed', 'Pipeline was cancelled by user.');
+                setIsPipelineActive(false);
+                if (timerRef.current) clearInterval(timerRef.current);
+                if (pollRef.current) clearInterval(pollRef.current);
               } else {
-                // Failure
-                updateStepStatus(3, 'failed', 'গিটহাব রানারে প্রসেসিং চলাকালীন সমস্যা হয়েছে। টার্মিনাল লগ চেক করুন।');
+                updateStepStatus(3, 'failed', 'Processing error on cloud runner. Check terminal logs.');
                 setIsPipelineActive(false);
                 if (timerRef.current) clearInterval(timerRef.current);
                 if (pollRef.current) clearInterval(pollRef.current);
 
                 showToast(
                   'error',
-                  'প্রসেসিং ব্যর্থ হয়েছে',
-                  'টার্মিনাল লগ দেখে সমস্যার কারণ পরীক্ষা করুন।',
+                  'Processing Failed',
+                  'Cloud runner exited with an error. Review the execution logs for details.',
                   latestRun.html_url
                 );
               }
@@ -282,7 +284,7 @@ export default function App() {
           }
 
           if (jobStatus === 'completed' && jobConclusion === 'failure' && !execStep) {
-            updateStepStatus(2, 'failed', 'গিটহাব অ্যাকশন জব শুরু করার সময় ব্যর্থ হয়েছে।');
+            updateStepStatus(2, 'failed', 'Cloud runner failed to initialize dependencies.');
             setIsPipelineActive(false);
             if (timerRef.current) clearInterval(timerRef.current);
             if (pollRef.current) clearInterval(pollRef.current);
@@ -301,12 +303,52 @@ export default function App() {
     pollRef.current = interval;
   };
 
-  // Handle Form Submission (Step 1 -> Start Pipeline)
+  // CANCEL / ABORT PIPELINE FUNCTION
+  const handleCancelPipeline = async () => {
+    setIsCancelling(true);
+
+    try {
+      if (activeRunId) {
+        // Cancel run via GitHub Actions REST API
+        await fetch(
+          `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs/${activeRunId}/cancel`,
+          {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/vnd.github.v3+json',
+              'Authorization': `Bearer ${APP_CONFIG.GITHUB_PAT}`
+            }
+          }
+        );
+      }
+
+      // Stop timers & reset status
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
+
+      setIsPipelineActive(false);
+      setIsSubmitting(false);
+
+      // Mark whichever step was active as cancelled
+      setSteps((prev) =>
+        prev.map((s) => (s.status === 'active' ? { ...s, status: 'failed', errorMessage: 'Process aborted by user.' } : s))
+      );
+
+      showToast('error', 'Pipeline Cancelled', 'The cloud runner execution was immediately stopped.');
+    } catch (err: any) {
+      showToast('error', 'Cancel Request Notice', err.message || 'Runner stopped.');
+      setIsPipelineActive(false);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  // Start Pipeline
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUrl = sourceUrl.trim();
     if (!cleanUrl) {
-      showToast('error', 'লিঙ্ক দেওয়া প্রয়োজন', 'অনুগ্রহ করে একটি বৈধ ভিডিও বা স্ট্রিম লিঙ্ক দিন।');
+      showToast('error', 'URL Required', 'Please enter a valid video stream or direct URL.');
       return;
     }
 
@@ -322,60 +364,58 @@ export default function App() {
     setSteps([
       {
         id: 1,
-        title: 'লিঙ্ক বিশ্লেষণ ও যাচাইকরণ',
-        description: 'লিঙ্কটি কি ভিডিও, এমবেড নাকি স্ট্রিম তা পরীক্ষা করে ডাউনলোডের উপযোগী করা',
+        title: 'URL Inspection & Protocol Validation',
+        description: 'Analyzing source link, video headers, and stream viability',
         status: 'active'
       },
       {
         id: 2,
-        title: 'ক্লাউড সার্ভারে ভিডিও ডাউনলোড',
-        description: 'গিটহাব অ্যাকশন ক্লাউড রানারে হাই-স্পিড মাল্টি-কানেকশন দিয়ে ডাউনলোড চলছে',
+        title: 'High-Speed Aria2c Download (16 Threads)',
+        description: 'Multi-threaded cloud ingest to fetch complete media file',
         status: 'pending'
       },
       {
         id: 3,
-        title: 'H.265 (HEVC) আল্ট্রা কমপ্রেশন',
-        description: 'FFmpeg দিয়ে কোয়ালিটি অক্ষুণ্ণ রেখে সাইজ ২ জিবির নিচে কমপ্রেস ও অপ্টিমাইজেশন',
+        title: 'Smart Stream Copy or Compression',
+        description: 'Direct stream copy if <=1.9GB (10-15s), or Ultrafast if >1.9GB',
         status: 'pending'
       },
       {
         id: 4,
-        title: 'টেলিগ্রাম চ্যানেলে আপলোড',
-        description: 'টেলিগ্রাম বট ও MTProto ইঞ্জিন দিয়ে চ্যানেলে ভিডিও আপলোড সম্পন্ন করা',
+        title: 'Telegram Cloud Backup Upload',
+        description: 'Parallel MTProto transfer directly to your Telegram channel',
         status: 'pending'
       },
       {
         id: 5,
-        title: 'স্ট্রিমিং ও ডাউনলোড লিংক জেনারেট',
-        description: 'সরাসরি স্ট্রিমিং ও হাই-স্পিড ডাউনলোড লিংক প্রস্তুত করা',
+        title: 'Stream & Download Link Generation',
+        description: 'Generating instant web playback and direct download endpoints',
         status: 'pending'
       }
     ]);
 
-    // Start Elapsed Timer
+    // Timer
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
 
-    // Step 1: Link Inspection & Validation
+    // Step 1: URL Validation
     setTimeout(async () => {
-      const isValidProtocol = cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://') || cleanUrl.toLowerCase() === 'test';
-      if (!isValidProtocol) {
-        updateStepStatus(1, 'failed', 'ভুল লিঙ্ক ফরম্যাট! লিঙ্কটি অবশ্যই https:// বা http:// দিয়ে শুরু হতে হবে।');
+      const isValid = cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://') || cleanUrl.toLowerCase() === 'test';
+      if (!isValid) {
+        updateStepStatus(1, 'failed', 'Invalid URL format. URL must start with http:// or https://');
         setIsSubmitting(false);
         setIsPipelineActive(false);
         if (timerRef.current) clearInterval(timerRef.current);
-        showToast('error', 'লিঙ্ক অবৈধ', 'অনুগ্রহ করে সঠিক URL ফরম্যাট প্রদান করুন।');
+        showToast('error', 'Invalid Link', 'Please provide a valid URL.');
         return;
       }
 
-      // Step 1 Success!
       updateStepStatus(1, 'completed');
       updateStepStatus(2, 'active');
 
       try {
-        // Trigger GitHub Actions Workflow
         const result = await dispatchWorkflow('process_video', {
           source_url: cleanUrl,
           tmdb_id: tmdbIdInput.trim() || '157336'
@@ -386,49 +426,35 @@ export default function App() {
 
         showToast(
           'loading',
-          'গিটহাব রানার সক্রিয় হয়েছে!',
-          'ক্লাউড সার্ভারে ভিডিও ডাউনলোড ও প্রসেসিং পাইপলাইন শুরু হয়েছে।',
+          'Cloud Runner Initialized',
+          'Aria2c download and smart stream-copy pipeline launched on GitHub Actions.',
           actionsUrl
         );
 
-        // Start live polling after dispatch
         startRealtimePolling();
       } catch (err: any) {
-        updateStepStatus(2, 'failed', err.message || 'গিটহাব সার্ভারে রিকোয়েস্ট পাঠাতে ব্যর্থ হয়েছে।');
+        updateStepStatus(2, 'failed', err.message || 'Failed to dispatch workflow run.');
         setIsPipelineActive(false);
         if (timerRef.current) clearInterval(timerRef.current);
-        showToast('error', 'ডিসপ্যাচ ব্যর্থ', err.message);
+        showToast('error', 'Dispatch Error', err.message);
       } finally {
         setIsSubmitting(false);
       }
-    }, 1200);
+    }, 1000);
   };
 
-  // Step 6: Handle Supabase Upload Button Click
+  // Step 6: Supabase Sync
   const handleSupabaseUpload = async () => {
     const cleanId = tmdbIdInput.trim();
     if (!cleanId) {
-      showToast('error', 'TMDb ID প্রয়োজন', 'অনুগ্রহ করে একটি সঠিক TMDb Movie বা Show ID দিন।');
+      showToast('error', 'TMDb ID Required', 'Please provide a valid TMDb ID.');
       return;
     }
 
     setSupabaseStatus('active');
-    setSupabaseMessage('TMDb থেকে মেটাডাটা নেওয়া হচ্ছে এবং সাফা বেইজে সেভ হচ্ছে...');
+    setSupabaseMessage('Syncing TMDb metadata and server endpoints to Supabase...');
 
     try {
-      // 1. Fetch metadata from TMDb API
-      let movieTitle = `Movie #${cleanId}`;
-      try {
-        const tmdbRes = await fetch(
-          `https://api.themoviedb.org/3/movie/${encodeURIComponent(cleanId)}?api_key=4b706c888c3df1950e326bceea187b99&language=en-US`
-        );
-        if (tmdbRes.ok) {
-          const tmdbData = await tmdbRes.json();
-          movieTitle = tmdbData.title || movieTitle;
-        }
-      } catch (_) {}
-
-      // 2. Dispatch dedicated sync_supabase action to GitHub runner
       await dispatchWorkflow('sync_supabase', {
         action: 'sync_supabase',
         tmdb_id: cleanId,
@@ -436,26 +462,25 @@ export default function App() {
         download_url: downloadUrl || `https://t.me/c/4408587176?download=true`
       });
 
-      setSupabaseMovieTitle(movieTitle);
       setSupabaseStatus('completed');
-      setSupabaseMessage(`সাফা বেইজে সফলভাবে আপলোড সম্পন্ন হয়েছে! (${movieTitle})`);
+      setSupabaseMessage(`Successfully synced TMDb #${cleanId} into Supabase 'movies' table.`);
 
       showToast(
         'success',
-        'সাফা বেইজে আপলোড সম্পন্ন!',
-        `'movies' টেবিলে #${cleanId} (${movieTitle}) এর স্ট্রিমিং ও ডাউনলোড লিংক সেভ করা হয়েছে।`
+        'Supabase Synced',
+        `Record for TMDb #${cleanId} updated with live stream server URLs.`
       );
     } catch (err: any) {
       setSupabaseStatus('failed');
-      setSupabaseMessage(err.message || 'সাফা বেইজে আপলোড করার সময় সমস্যা দেখা দিয়েছে।');
-      showToast('error', 'আপলোড ব্যর্থ', err.message || 'সাফা বেইজে ডাটা সেভ হয়নি।');
+      setSupabaseMessage(err.message || 'Supabase sync failed.');
+      showToast('error', 'Sync Failed', err.message);
     }
   };
 
   const formatElapsed = (sec: number) => {
     const mins = Math.floor(sec / 60);
     const s = sec % 60;
-    return `${mins} মিনিট ${s < 10 ? '0' : ''}${s} সেকেন্ড`;
+    return `${mins}m ${s < 10 ? '0' : ''}${s}s`;
   };
 
   return (
@@ -495,7 +520,7 @@ export default function App() {
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 mt-2 font-medium"
                 >
-                  গিটহাব অ্যাকশনে লাইভ টার্মিনাল দেখুন <ExternalLink className="w-3 h-3" />
+                  View Cloud Runner Terminal <ExternalLink className="w-3 h-3" />
                 </a>
               )}
             </div>
@@ -510,67 +535,83 @@ export default function App() {
             <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
               <Film className="w-4 h-4" />
             </div>
-            <h1 className="font-semibold text-sm text-white tracking-tight">অটোমেটেড মিডিয়া ইঞ্জিন</h1>
+            <h1 className="font-semibold text-sm text-white tracking-tight">Telegram Cloud Media Engine</h1>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>টার্গেট: {APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</span>
+            <span>Target: {APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</span>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col gap-6">
-        {/* URL Input Form Card */}
+        {/* Source URL Form */}
         <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
                 <LinkIcon className="w-4 h-4 text-indigo-400" />
-                ভিডিও বা স্ট্রিম লিঙ্ক দিন
+                Source Video URL
               </label>
               <input
                 type="text"
                 value={sourceUrl}
                 onChange={(e) => setSourceUrl(e.target.value)}
-                placeholder="যেমন: https://example.com/movie.mp4 বা .m3u8 বা টেস্ট করতে 'test' লিখুন"
+                placeholder="Enter direct MP4, embed URL, HLS .m3u8, or 'test'"
                 required
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono"
               />
-              <p className="text-[11px] text-slate-400 mt-1.5">
-                সরাসরি MP4 লিঙ্ক, এমবেড প্লেয়ার লিঙ্ক, HLS স্ট্রিম (.m3u8), অথবা টেস্ট রানার চেক করতে <code>test</code> লিখুন।
-              </p>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2">
+                <span>Multi-thread Aria2c download &bull; Smart stream copy for files &le; 1.9GB</span>
+                <span>Type <code>test</code> for instant self-test</span>
+              </div>
             </div>
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                বাটনে চাপ দিলে স্টেপ-বাই-স্টেপ লাইভ প্রসেসিং শুরু হবে
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                Ultra-fast 2GB Telegram single-file pipeline
               </span>
-              <button
-                type="submit"
-                disabled={isSubmitting || isPipelineActive}
-                className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>যাচাই হচ্ছে...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>প্রসেস শুরু করুন</span>
-                  </>
+
+              <div className="flex items-center gap-2.5">
+                {isPipelineActive && (
+                  <button
+                    type="button"
+                    onClick={handleCancelPipeline}
+                    disabled={isCancelling}
+                    className="bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-medium py-2.5 px-4 rounded-xl transition-colors flex items-center gap-1.5 text-sm"
+                  >
+                    {isCancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4 fill-current" />}
+                    <span>Cancel Pipeline</span>
+                  </button>
                 )}
-              </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || isPipelineActive}
+                  className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Validating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>Start Pipeline</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
         </section>
 
         {/* Step-by-Step Live Processing Timeline */}
         {(isPipelineActive || streamUrl || steps[0].status !== 'pending') && (
-          <section className="bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-indigo-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-6 animate-in fade-in duration-300">
+          <section className="bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-indigo-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-6">
             {/* Timeline Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
@@ -579,29 +620,42 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm text-white">
-                    {streamUrl ? 'সবগুলো স্টেপ সফলভাবে সম্পন্ন হয়েছে!' : 'রিয়েল-টাইম স্টেপ প্রসেসিং চলছে...'}
+                    {streamUrl ? 'Pipeline Execution Succeeded' : 'Real-Time Pipeline Progress'}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    মোট সময় লেগেছে: <span className="font-mono text-indigo-300">{formatElapsed(elapsedSeconds)}</span>
+                    Elapsed Time: <span className="font-mono text-indigo-300">{formatElapsed(elapsedSeconds)}</span>
                   </p>
                 </div>
               </div>
 
-              {activeRunUrl && (
-                <a
-                  href={activeRunUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium bg-indigo-950/50 border border-indigo-800/60 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  <span>টার্মিনাল লগ</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
+              <div className="flex items-center gap-2">
+                {isPipelineActive && (
+                  <button
+                    type="button"
+                    onClick={handleCancelPipeline}
+                    className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 font-medium bg-rose-950/50 border border-rose-800/60 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Square className="w-3 h-3 fill-current" />
+                    <span>Abort Run</span>
+                  </button>
+                )}
+
+                {activeRunUrl && (
+                  <a
+                    href={activeRunUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium bg-indigo-950/50 border border-indigo-800/60 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <span>Terminal Logs</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
             </div>
 
             {/* 5 Distinct Interactive Steps */}
-            <div className="space-y-4">
+            <div className="space-y-3.5">
               {steps.map((step) => {
                 const isCompleted = step.status === 'completed';
                 const isActive = step.status === 'active';
@@ -624,7 +678,7 @@ export default function App() {
                     {/* Status Icon */}
                     <div className="mt-0.5 flex-shrink-0">
                       {isCompleted && (
-                        <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400 animate-in zoom-in-75">
+                        <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400">
                           <Check className="w-3.5 h-3.5 stroke-[3]" />
                         </div>
                       )}
@@ -649,7 +703,7 @@ export default function App() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-xs sm:text-sm text-slate-200">
-                          স্টেপ {step.id}: {step.title}
+                          Step {step.id}: {step.title}
                         </h4>
                         <span
                           className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono ${
@@ -662,7 +716,7 @@ export default function App() {
                               : 'bg-slate-800 text-slate-500'
                           }`}
                         >
-                          {isCompleted ? 'সফল (Done)' : isActive ? 'চলছে (In Progress)' : isFailed ? 'ব্যর্থ (Error)' : 'অপেক্ষমান'}
+                          {isCompleted ? 'Done' : isActive ? 'In Progress' : isFailed ? 'Error' : 'Pending'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-1 leading-relaxed">
@@ -678,12 +732,12 @@ export default function App() {
               })}
             </div>
 
-            {/* Generated Dual Links Box (Appears automatically when Step 4 & 5 finish) */}
+            {/* Generated Dual Links Box */}
             {streamUrl && downloadUrl && (
-              <div className="space-y-4 pt-3 border-t border-slate-800/80 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="space-y-4 pt-4 border-t border-slate-800/80">
                 <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>টেলিগ্রাম থেকে ২টি লিংক স্বয়ংক্রিয়ভাবে তৈরি হয়েছে:</span>
+                  <span>Telegram cloud links generated successfully:</span>
                 </div>
 
                 {/* Link 1: Direct Streaming Link */}
@@ -691,7 +745,7 @@ export default function App() {
                   <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <Tv className="w-3.5 h-3.5 text-indigo-400" />
-                      ১. ডিরেক্ট স্ট্রিমিং লিংক (Direct Streaming Link)
+                      1. Direct Streaming Link
                     </span>
                     <span className="text-[11px] text-emerald-400 font-mono">Stream Ready</span>
                   </label>
@@ -708,7 +762,7 @@ export default function App() {
                       className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700/80"
                     >
                       {copiedField === 'stream' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedField === 'stream' ? 'কপি হয়েছে' : 'কপি'}</span>
+                      <span>{copiedField === 'stream' ? 'Copied' : 'Copy'}</span>
                     </button>
                     <a
                       href={streamUrl}
@@ -717,7 +771,7 @@ export default function App() {
                       className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-md shadow-indigo-600/20"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>ওপেন</span>
+                      <span>Open</span>
                     </a>
                   </div>
                 </div>
@@ -727,9 +781,9 @@ export default function App() {
                   <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <Download className="w-3.5 h-3.5 text-emerald-400" />
-                      ২. ডিরেক্ট ডাউনলোড লিংক (Direct Download Link)
+                      2. Direct Download Link
                     </span>
-                    <span className="text-[11px] text-slate-400 font-mono">Full H.265 File</span>
+                    <span className="text-[11px] text-slate-400 font-mono">Original Quality</span>
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -744,7 +798,7 @@ export default function App() {
                       className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700/80"
                     >
                       {copiedField === 'download' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedField === 'download' ? 'কপি হয়েছে' : 'কপি'}</span>
+                      <span>{copiedField === 'download' ? 'Copied' : 'Copy'}</span>
                     </button>
                     <a
                       href={downloadUrl}
@@ -753,12 +807,12 @@ export default function App() {
                       className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>ডাউনলোড</span>
+                      <span>Download</span>
                     </a>
                   </div>
                 </div>
 
-                {/* Dedicated Supabase Upload Box (Below the 2 links) */}
+                {/* Dedicated Supabase Upload Box */}
                 <div className="mt-6 pt-5 border-t border-slate-800/90 bg-slate-950/80 p-5 rounded-2xl border border-indigo-500/30 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -767,23 +821,22 @@ export default function App() {
                       </div>
                       <div>
                         <h4 className="font-semibold text-xs sm:text-sm text-white">
-                          সাফা বেইজে (Supabase) আপলোড সেকশন
+                          Supabase Database Sync
                         </h4>
                         <p className="text-[11px] text-slate-400">
-                          টিএমডিবি আইডি দিয়ে সাফা বেইজ ডাটাবেসে সেভ করুন
+                          Save stream metadata into Supabase 'movies' table
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* TMDb ID Input & Upload Button */}
                   <div className="flex flex-col sm:flex-row items-center gap-3">
                     <div className="w-full sm:flex-1">
                       <input
                         type="text"
                         value={tmdbIdInput}
                         onChange={(e) => setTmdbIdInput(e.target.value)}
-                        placeholder="TMDb Movie/Show ID (যেমন: 157336)"
+                        placeholder="TMDb Movie/Show ID (e.g. 157336)"
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
                       />
                     </div>
@@ -796,18 +849,17 @@ export default function App() {
                       {supabaseStatus === 'active' ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>আপলোড হচ্ছে...</span>
+                          <span>Syncing...</span>
                         </>
                       ) : (
                         <>
                           <Send className="w-4 h-4" />
-                          <span>সাফা বেইজে আপলোড করুন</span>
+                          <span>Sync to Supabase</span>
                         </>
                       )}
                     </button>
                   </div>
 
-                  {/* Real-Time Supabase Status Feedback */}
                   {supabaseStatus !== 'pending' && (
                     <div
                       className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs transition-all ${
@@ -834,8 +886,8 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-slate-800/60 bg-slate-950 py-4">
         <div className="max-w-3xl mx-auto px-4 flex items-center justify-between text-xs text-slate-400">
-          <span>রিপোজিটরি: <code className="text-slate-300 font-mono">{APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</code></span>
-          <span>চ্যানেল আইডি: <code className="text-slate-300 font-mono">{APP_CONFIG.TELEGRAM_CHANNEL_ID}</code></span>
+          <span>Repository: <code className="text-slate-300 font-mono">{APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</code></span>
+          <span>Channel: <code className="text-slate-300 font-mono">{APP_CONFIG.TELEGRAM_CHANNEL_ID}</code></span>
         </div>
       </footer>
     </div>
