@@ -3,7 +3,7 @@
 Automated Media Processing Engine (MTProto 2GB Single-File Pipeline)
 ===================================================================
 1. Input Ingestion:
-   - Reads TMDB_ID and SOURCE_URL from environment or GitHub Actions event payload.
+   - Reads TMDB_ID, SOURCE_URL, and ACTION_TYPE from environment or GitHub Actions event payload.
 2. Embed, Direct & HLS Streaming Download:
    - Supports Direct URLs, Embed URLs, HLS playlists (.m3u8), and instant test mode ('test').
 3. Large File Compression (H.265/HEVC):
@@ -13,7 +13,7 @@ Automated Media Processing Engine (MTProto 2GB Single-File Pipeline)
    - Fast direct upload to Telegram Channel -1004408587176.
 5. TMDb v3 Integration & Supabase Atomic UPSERT:
    - Queries TMDb API v3 for Title, Overview, Poster Path, and Release Date.
-   - Upserts record directly into Supabase 'movies' table with robust URL formatting.
+   - Upserts record directly into Supabase 'movies' table.
 """
 
 import os
@@ -53,39 +53,53 @@ DEFAULT_TELEGRAM_API_HASH = "b18441a1ff607e10a989891a5462e627"
 
 
 def load_input_parameters():
-    """Extract tmdb_id and source_url from environment or github event json."""
+    """Extract parameters from environment or github event json."""
+    action_type = os.environ.get("ACTION_TYPE", "process_video").strip()
     tmdb_id = os.environ.get("TMDB_ID")
     source_url = os.environ.get("SOURCE_URL")
+    stream_url = os.environ.get("STREAM_URL")
+    download_url = os.environ.get("DOWNLOAD_URL")
 
     event_path = os.environ.get("GITHUB_EVENT_PATH")
     if event_path and Path(event_path).exists():
         try:
             with open(event_path, "r", encoding="utf-8") as f:
                 event_data = json.load(f)
+
+            if "action" in event_data:
+                action_type = str(event_data["action"]).strip()
+
             client_payload = event_data.get("client_payload", {})
+            if "action" in client_payload:
+                action_type = str(client_payload["action"]).strip()
             if not tmdb_id and "tmdb_id" in client_payload:
                 tmdb_id = str(client_payload["tmdb_id"]).strip()
             if not source_url and "source_url" in client_payload:
                 source_url = str(client_payload["source_url"]).strip()
+            if not stream_url and "stream_url" in client_payload:
+                stream_url = str(client_payload["stream_url"]).strip()
+            if not download_url and "download_url" in client_payload:
+                download_url = str(client_payload["download_url"]).strip()
 
             workflow_inputs = event_data.get("inputs", {})
             if not tmdb_id and "tmdb_id" in workflow_inputs:
                 tmdb_id = str(workflow_inputs["tmdb_id"]).strip()
             if not source_url and "source_url" in workflow_inputs:
                 source_url = str(workflow_inputs["source_url"]).strip()
+            if not stream_url and "stream_url" in workflow_inputs:
+                stream_url = str(workflow_inputs["stream_url"]).strip()
+            if not download_url and "download_url" in workflow_inputs:
+                download_url = str(workflow_inputs["download_url"]).strip()
         except Exception as e:
             logger.warning(f"Could not parse GITHUB_EVENT_PATH: {e}")
 
+    # Fallback to sys.argv
     if not tmdb_id and len(sys.argv) > 1:
         tmdb_id = sys.argv[1].strip()
     if not source_url and len(sys.argv) > 2:
         source_url = sys.argv[2].strip()
 
-    if not tmdb_id or not source_url:
-        logger.error("Error: Both TMDB_ID and SOURCE_URL are required.")
-        sys.exit(1)
-
-    return tmdb_id, source_url
+    return action_type, tmdb_id, source_url, stream_url, download_url
 
 
 def get_media_duration_seconds(file_path: str) -> float:
@@ -106,17 +120,12 @@ def get_media_duration_seconds(file_path: str) -> float:
 
 
 def download_media(source_url: str, output_dir: Path) -> Path:
-    """
-    Download video or generate test sample:
-    - If source_url == 'test', synthesizes a test video via FFmpeg.
-    - Otherwise, downloads via yt-dlp or chunked requests fallback.
-    """
+    """Download video or generate test sample."""
     output_dir.mkdir(parents=True, exist_ok=True)
     fallback_file = output_dir / "input_media.mp4"
 
-    # Instant Self-Verification / Test Mode
     if source_url.lower().strip() == "test":
-        logger.info("Test Mode Activated: Generating verified test video pattern via FFmpeg...")
+        logger.info("Test Mode: Generating verified test pattern via FFmpeg...")
         gen_cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi", "-i", "testsrc=duration=5:size=1280x720:rate=30",
@@ -125,6 +134,7 @@ def download_media(source_url: str, output_dir: Path) -> Path:
             str(fallback_file)
         ]
         subprocess.run(gen_cmd, check=True)
+        logger.info("FFmpeg test media created successfully.")
         return fallback_file
 
     logger.info(f"Downloading stream/embed media from: {source_url}")
@@ -146,7 +156,7 @@ def download_media(source_url: str, output_dir: Path) -> Path:
         subprocess.run(ytdlp_cmd, check=True)
         download_success = True
     except Exception as err:
-        logger.warning(f"yt-dlp could not fetch stream directly ({err}). Trying direct streaming fallback...")
+        logger.warning(f"yt-dlp stream fetch notice ({err}). Trying direct streaming fallback...")
 
     matching_files = [f for f in output_dir.glob("input_media.*") if f.is_file() and not f.name.endswith(".part")]
 
@@ -248,7 +258,7 @@ async def upload_via_telethon(bot_token: str, channel_id: str, video_path: Path,
     if message.media and hasattr(message.media, "document"):
         file_id = str(message.media.document.id)
 
-    logger.info(f"MTProto upload successful! Message ID: {message_id} | URL: {telegram_web_url}")
+    logger.info(f"Telegram MTProto upload successful! Message ID: {message_id} | URL: {telegram_web_url}")
     return {
         "file_id": file_id or str(message_id),
         "message_id": message_id,
@@ -361,11 +371,8 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
         logger.warning("Supabase package not imported. Skipping database sync.")
         return
 
-    # Clean and normalize Supabase URL
     clean_url = supabase_url.strip().strip("'").strip('"').strip('[').strip(']')
-    if clean_url.startswith("https://") or clean_url.startswith("http://"):
-        pass
-    else:
+    if not clean_url.startswith("https://") and not clean_url.startswith("http://"):
         clean_url = f"https://{clean_url}"
     clean_url = clean_url.rstrip("/")
 
@@ -425,22 +432,47 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
 
 def main():
     logger.info("=== AUTOMATED MEDIA PROCESSING ENGINE STARTED ===")
-    tmdb_id, source_url = load_input_parameters()
+    action_type, tmdb_id, source_url, stream_url, download_url = load_input_parameters()
 
-    telegram_bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    telegram_channel_id = os.environ.get("TELEGRAM_CHANNEL_ID", "-1004408587176")
     supabase_url = os.environ.get("SUPABASE_URL", "https://tmomuyxckjhlsjfbzfvz.supabase.co")
     supabase_service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     tmdb_api_key = os.environ.get("TMDB_API_KEY")
 
-    missing = []
-    if not telegram_bot_token: missing.append("TELEGRAM_BOT_TOKEN")
-    if not supabase_service_role_key: missing.append("SUPABASE_SERVICE_ROLE_KEY")
-    if not tmdb_api_key: missing.append("TMDB_API_KEY")
+    # ACTION: Dedicated Supabase Sync
+    if action_type == "sync_supabase":
+        logger.info(f"Running dedicated Supabase sync for TMDb ID: {tmdb_id}")
+        if not tmdb_id:
+            logger.error("TMDb ID is required for sync_supabase.")
+            sys.exit(1)
 
-    if missing:
-        logger.error(f"Missing mandatory environment secrets: {', '.join(missing)}")
+        metadata = fetch_tmdb_metadata(tmdb_api_key, tmdb_id)
+        effective_stream = stream_url or f"https://t.me/c/4408587176"
+        effective_download = download_url or f"{effective_stream}?download=true"
+
+        upload_data = {
+            "channel_url": effective_stream,
+            "file_id": tmdb_id
+        }
+
+        upsert_supabase_movie(
+            supabase_url=supabase_url,
+            service_role_key=supabase_service_role_key,
+            tmdb_id=tmdb_id,
+            metadata=metadata,
+            upload_data=upload_data,
+            source_url=source_url or effective_stream
+        )
+        logger.info(f"=== SUPABASE SYNC COMPLETED SUCCESSFULLY (TMDb #{tmdb_id}) ===")
+        sys.exit(0)
+
+    # ACTION: Standard Transcode & Ingest Pipeline
+    if not source_url:
+        logger.error("Error: SOURCE_URL is required for processing.")
         sys.exit(1)
+
+    effective_tmdb_id = tmdb_id or "157336"
+    telegram_bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    telegram_channel_id = os.environ.get("TELEGRAM_CHANNEL_ID", "-1004408587176")
 
     work_dir = Path("/tmp/media_engine_run")
     if work_dir.exists():
@@ -448,29 +480,38 @@ def main():
     work_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # 1. TMDb
-        metadata = fetch_tmdb_metadata(tmdb_api_key, tmdb_id)
+        # Step 1: TMDb Metadata Fetch
+        metadata = fetch_tmdb_metadata(tmdb_api_key, effective_tmdb_id)
 
-        # 2. Download / Synthesize Media
+        # Step 2: Download Media
+        logger.info("[STEP_DOWNLOAD_START] Downloading source media...")
         raw_video = download_media(source_url, work_dir)
+        logger.info("[STEP_DOWNLOAD_COMPLETE] Media download complete.")
 
-        # 3. Transcode to H.265
-        compressed_video = work_dir / f"processed_{tmdb_id}.mp4"
+        # Step 3: H.265 Transcode
+        logger.info("[STEP_TRANSCODE_START] Compressing to H.265 (HEVC)...")
+        compressed_video = work_dir / f"processed_{effective_tmdb_id}.mp4"
         transcode_to_h265(raw_video, compressed_video)
+        logger.info("[STEP_TRANSCODE_COMPLETE] Compression to H.265 complete.")
 
-        # 4. Telegram Upload
+        # Step 4: Telegram Upload
+        logger.info("[STEP_UPLOAD_START] Uploading video to Telegram Channel...")
         caption = f"🎬 {metadata['title']} ({metadata['release_date'][:4] if metadata['release_date'] else 'N/A'})\n\n{metadata['overview'][:300]}...\n\n✅ Verified Media Pipeline | H.265 HEVC"
         upload_data = upload_to_telegram(telegram_bot_token, telegram_channel_id, compressed_video, caption)
+        logger.info(f"[STEP_UPLOAD_COMPLETE] Upload complete. Message ID: {upload_data.get('message_id')}")
 
-        # 5. Supabase UPSERT
-        upsert_supabase_movie(
-            supabase_url=supabase_url,
-            service_role_key=supabase_service_role_key,
-            tmdb_id=tmdb_id,
-            metadata=metadata,
-            upload_data=upload_data,
-            source_url=source_url
-        )
+        # Step 5: Supabase UPSERT (if tmdb_id was provided)
+        if tmdb_id:
+            logger.info("[STEP_DB_START] Syncing entry to Supabase table 'movies'...")
+            upsert_supabase_movie(
+                supabase_url=supabase_url,
+                service_role_key=supabase_service_role_key,
+                tmdb_id=tmdb_id,
+                metadata=metadata,
+                upload_data=upload_data,
+                source_url=source_url
+            )
+            logger.info("[STEP_DB_COMPLETE] Supabase sync complete.")
 
         logger.info("=== PIPELINE EXECUTION COMPLETED SUCCESSFULLY (100%) ===")
 
