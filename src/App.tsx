@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Film,
   Link as LinkIcon,
@@ -13,8 +13,9 @@ import {
   Check,
   Tv,
   Download,
-  RefreshCw,
-  Clock
+  Clock,
+  Activity,
+  AlertTriangle
 } from 'lucide-react';
 import { APP_CONFIG } from './config';
 
@@ -26,22 +27,18 @@ interface ToastState {
   actionUrl?: string;
 }
 
-interface ProcessResult {
+interface ProcessJob {
   tmdbId: string;
-  title: string;
-  streamUrl: string;
-  downloadUrl: string;
-  status: 'queued' | 'processing' | 'completed';
-  timestamp: string;
-  runUrl?: string;
-  addedToDatabase: boolean;
-  columnsUpdated: {
-    tmdb_id: string;
-    title: string;
-    servers: string;
-    download_url: string;
-    table: string;
-  };
+  sourceUrl: string;
+  runId?: number;
+  runUrl: string;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed';
+  conclusion?: string;
+  startedAt: string;
+  elapsedSeconds: number;
+  streamUrl?: string;
+  downloadUrl?: string;
+  errorMessage?: string;
 }
 
 export default function App() {
@@ -49,13 +46,13 @@ export default function App() {
   const [sourceUrl, setSourceUrl] = useState('');
   const [tmdbId, setTmdbId] = useState('');
 
-  // Loading states
-  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
-  const [isSubmittingTmdb, setIsSubmittingTmdb] = useState(false);
+  // Loading & tracking
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeJob, setActiveJob] = useState<ProcessJob | null>(null);
   const [copiedField, setCopiedField] = useState<'stream' | 'download' | null>(null);
 
-  // Result display
-  const [currentResult, setCurrentResult] = useState<ProcessResult | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Toast notification
   const [toast, setToast] = useState<ToastState>({
@@ -65,14 +62,26 @@ export default function App() {
     message: ''
   });
 
-  // Restore last generated result from localStorage on mount
+  // Restore last job from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem('last_media_engine_result');
+    const saved = localStorage.getItem('active_media_job');
     if (saved) {
       try {
-        setCurrentResult(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setActiveJob(parsed);
+        if (parsed.status === 'in_progress' || parsed.status === 'queued') {
+          startPolling(parsed.runId, parsed.tmdbId);
+        }
       } catch (_) {}
     }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, []);
 
   const showToast = (type: 'loading' | 'success' | 'error', title: string, message: string, actionUrl?: string) => {
@@ -125,8 +134,98 @@ export default function App() {
     throw new Error(errorMsg);
   };
 
-  // Action 1: "Generate / Process" for Source Video URL
-  const handleProcessVideo = async (e: React.FormEvent) => {
+  // Live polling for the actual GitHub Actions run status
+  const startPolling = (knownRunId?: number, tmdb?: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    // Increment elapsed time timer
+    timerRef.current = setInterval(() => {
+      setActiveJob((prev) => (prev ? { ...prev, elapsedSeconds: prev.elapsedSeconds + 1 } : prev));
+    }, 1000);
+
+    let attempts = 0;
+    const pollInterval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs?per_page=5`,
+          {
+            headers: {
+              'Accept': 'application/vnd.github.v3+json',
+              'Authorization': `Bearer ${APP_CONFIG.GITHUB_PAT}`
+            }
+          }
+        );
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+        const runs = data.workflow_runs || [];
+        const latestRun = runs[0];
+
+        if (latestRun) {
+          const status = latestRun.status; // queued, in_progress, completed
+          const conclusion = latestRun.conclusion; // success, failure, null
+
+          setActiveJob((prev) => {
+            if (!prev) return null;
+            const updated: ProcessJob = {
+              ...prev,
+              runId: latestRun.id,
+              runUrl: latestRun.html_url,
+              status: status === 'completed' ? (conclusion === 'success' ? 'completed' : 'failed') : status,
+              conclusion: conclusion || undefined
+            };
+
+            // If completed successfully, generate final links
+            if (status === 'completed' && conclusion === 'success') {
+              const cleanCid = APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '');
+              updated.streamUrl = `https://t.me/c/${cleanCid}`;
+              updated.downloadUrl = `https://t.me/c/${cleanCid}?download=true`;
+            } else if (status === 'completed' && conclusion === 'failure') {
+              updated.errorMessage = 'GitHub Actions run failed during execution. Check terminal logs.';
+            }
+
+            localStorage.setItem('active_media_job', JSON.stringify(updated));
+            return updated;
+          });
+
+          if (status === 'completed') {
+            clearInterval(pollInterval);
+            if (timerRef.current) clearInterval(timerRef.current);
+            if (conclusion === 'success') {
+              showToast(
+                'success',
+                'Transcode & Upload Completed!',
+                'Video has been uploaded to Telegram and links are saved to Supabase.',
+                latestRun.html_url
+              );
+            } else {
+              showToast(
+                'error',
+                'Workflow Failed',
+                'The processing job encountered an error on the runner. Click to see details.',
+                latestRun.html_url
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+
+      // Stop after 25 minutes
+      if (attempts > 300) {
+        clearInterval(pollInterval);
+        if (timerRef.current) clearInterval(timerRef.current);
+      }
+    }, 5000);
+
+    pollingRef.current = pollInterval;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sourceUrl.trim()) {
       showToast('error', 'URL Required', 'Please enter a direct video, embed, or .m3u8 stream URL.');
@@ -134,8 +233,8 @@ export default function App() {
     }
 
     const cleanTmdb = tmdbId.trim() || '157336';
-    setIsProcessingVideo(true);
-    showToast('loading', 'Triggering Engine...', 'Dispatching video transcode and Supabase ingest pipeline...');
+    setIsSubmitting(true);
+    showToast('loading', 'Starting Engine...', 'Sending dispatch request to GitHub Actions background runner...');
 
     try {
       const result = await dispatchWorkflow('process_video', {
@@ -143,102 +242,40 @@ export default function App() {
         tmdb_id: cleanTmdb
       });
 
-      const actionsRunUrl = `https://github.com/${result.owner}/${result.repo}/actions`;
-      
-      // Clean Telegram channel ID for direct links (-1004408587176 -> 4408587176)
-      const cleanCid = APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '');
-      const liveStreamUrl = `https://t.me/c/${cleanCid}`;
-      const liveDownloadUrl = `https://t.me/c/${cleanCid}?download=true`;
+      const actionsBaseUrl = `https://github.com/${result.owner}/${result.repo}/actions`;
 
-      const newResult: ProcessResult = {
+      const newJob: ProcessJob = {
         tmdbId: cleanTmdb,
-        title: `TMDb Entity #${cleanTmdb}`,
-        streamUrl: liveStreamUrl,
-        downloadUrl: liveDownloadUrl,
-        status: 'queued',
-        timestamp: new Date().toLocaleTimeString(),
-        runUrl: actionsRunUrl,
-        addedToDatabase: true,
-        columnsUpdated: {
-          tmdb_id: cleanTmdb,
-          title: `Movie #${cleanTmdb}`,
-          servers: `Telegram CDN (H.265 / 1080p)`,
-          download_url: liveDownloadUrl,
-          table: 'movies'
-        }
+        sourceUrl: sourceUrl.trim(),
+        runUrl: actionsBaseUrl,
+        status: 'in_progress',
+        startedAt: new Date().toLocaleTimeString(),
+        elapsedSeconds: 0
       };
 
-      setCurrentResult(newResult);
-      localStorage.setItem('last_media_engine_result', JSON.stringify(newResult));
+      setActiveJob(newJob);
+      localStorage.setItem('active_media_job', JSON.stringify(newJob));
 
       showToast(
         'success',
-        'Successfully Queued & Processing!',
-        `Video transcode started. Generated Streaming and Download links are ready below, and record is updating in Supabase 'movies' table.`,
-        actionsRunUrl
+        'Job Dispatched to Runner!',
+        'Virtual runner is initializing. Download, H.265 compression, and MTProto upload are now underway.',
+        actionsBaseUrl
       );
+
+      // Start live polling
+      setTimeout(() => startPolling(undefined, cleanTmdb), 3000);
     } catch (err: any) {
-      showToast('error', 'Processing Failed', err.message || 'Failed to dispatch workflow.');
+      showToast('error', 'Dispatch Failed', err.message || 'Failed to dispatch workflow.');
     } finally {
-      setIsProcessingVideo(false);
+      setIsSubmitting(false);
     }
   };
 
-  // Action 2: "Submit to Database" for TMDb Movie / Show ID
-  const handleSubmitTmdb = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tmdbId.trim()) {
-      showToast('error', 'TMDb ID Required', 'Please enter a TMDb Movie or Show ID (e.g. 157336).');
-      return;
-    }
-
-    const cleanTmdb = tmdbId.trim();
-    setIsSubmittingTmdb(true);
-    showToast('loading', 'Submitting to Database...', `Connecting TMDb #${cleanTmdb} with Telegram stream in Supabase table 'movies'...`);
-
-    try {
-      const result = await dispatchWorkflow('process_video', {
-        tmdb_id: cleanTmdb,
-        source_url: sourceUrl.trim() || ''
-      });
-
-      const actionsRunUrl = `https://github.com/${result.owner}/${result.repo}/actions`;
-      const cleanCid = APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '');
-      const liveStreamUrl = `https://t.me/c/${cleanCid}`;
-      const liveDownloadUrl = `https://t.me/c/${cleanCid}?download=true`;
-
-      const newResult: ProcessResult = {
-        tmdbId: cleanTmdb,
-        title: `TMDb #${cleanTmdb}`,
-        streamUrl: liveStreamUrl,
-        downloadUrl: liveDownloadUrl,
-        status: 'queued',
-        timestamp: new Date().toLocaleTimeString(),
-        runUrl: actionsRunUrl,
-        addedToDatabase: true,
-        columnsUpdated: {
-          tmdb_id: cleanTmdb,
-          title: `Movie Metadata #${cleanTmdb}`,
-          servers: `Telegram CDN (H.265 / 1080p)`,
-          download_url: liveDownloadUrl,
-          table: 'movies'
-        }
-      };
-
-      setCurrentResult(newResult);
-      localStorage.setItem('last_media_engine_result', JSON.stringify(newResult));
-
-      showToast(
-        'success',
-        'Submitted to Supabase Database!',
-        `TMDb ID #${cleanTmdb} queued for metadata sync. Generated links and database row updates are displayed below.`,
-        actionsRunUrl
-      );
-    } catch (err: any) {
-      showToast('error', 'Submission Failed', err.message || 'Failed to link TMDb metadata.');
-    } finally {
-      setIsSubmittingTmdb(false);
-    }
+  const formatElapsed = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${mins}m ${s < 10 ? '0' : ''}${s}s`;
   };
 
   return (
@@ -297,17 +334,16 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Connected &amp; Ready</span>
+            <span>Target: {APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</span>
           </div>
         </div>
       </header>
 
       {/* Main Workspace */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col gap-6">
-        
-        {/* Input 1: Direct Video / Stream URL */}
+        {/* Unified Input Card */}
         <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
-          <form onSubmit={handleProcessVideo} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
                 <LinkIcon className="w-4 h-4 text-indigo-400" />
@@ -323,34 +359,6 @@ export default function App() {
               />
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-slate-400">
-                Transcodes to H.265 &amp; uploads to Telegram (MTProto)
-              </span>
-              <button
-                type="submit"
-                disabled={isProcessingVideo}
-                className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isProcessingVideo ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>Generate / Process</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {/* Input 2: TMDb Movie / Show ID */}
-        <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
-          <form onSubmit={handleSubmitTmdb} className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
                 <Film className="w-4 h-4 text-indigo-400" />
@@ -366,25 +374,24 @@ export default function App() {
               />
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-slate-400" />
-                Fetches metadata &amp; performs UPSERT to Supabase table
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-slate-400">
+                Downloads &rarr; Transcodes H.265 &rarr; MTProto Telegram Upload &rarr; Supabase Sync
               </span>
               <button
                 type="submit"
-                disabled={isSubmittingTmdb}
-                className="bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white font-medium py-2.5 px-6 rounded-xl transition-colors border border-slate-700 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSubmitting}
+                className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmittingTmdb ? (
+                {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Submitting...</span>
+                    <span>Triggering Runner...</span>
                   </>
                 ) : (
                   <>
-                    <Database className="w-4 h-4" />
-                    <span>Submit to Database</span>
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Generate / Process</span>
                   </>
                 )}
               </button>
@@ -392,138 +399,202 @@ export default function App() {
           </form>
         </section>
 
-        {/* Live Generated Links & Database Confirmation Card */}
-        {currentResult && (
+        {/* Live Background Progress / Results Card */}
+        {activeJob && (
           <section className="bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-indigo-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center border ${
+                    activeJob.status === 'completed'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                      : activeJob.status === 'failed'
+                      ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                      : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400 animate-pulse'
+                  }`}
+                >
+                  {activeJob.status === 'completed' && <CheckCircle2 className="w-4 h-4" />}
+                  {activeJob.status === 'failed' && <AlertTriangle className="w-4 h-4" />}
+                  {(activeJob.status === 'in_progress' || activeJob.status === 'queued') && (
+                    <Activity className="w-4 h-4" />
+                  )}
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm text-white flex items-center gap-2">
-                    Generated Links &amp; Database Row
+                    {activeJob.status === 'completed' && 'Processing Complete! Links Ready'}
+                    {activeJob.status === 'in_progress' && 'Processing Live on GitHub Actions Runner...'}
+                    {activeJob.status === 'queued' && 'Queued on Virtual Runner...'}
+                    {activeJob.status === 'failed' && 'Execution Failed on Runner'}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    TMDb ID: <span className="font-mono text-indigo-300">{currentResult.tmdbId}</span> · Dispatched at {currentResult.timestamp}
+                    TMDb ID: <span className="font-mono text-indigo-300">#{activeJob.tmdbId}</span> · Elapsed: {formatElapsed(activeJob.elapsedSeconds)}
                   </p>
                 </div>
               </div>
 
-              {currentResult.runUrl && (
-                <a
-                  href={currentResult.runUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium bg-indigo-950/50 border border-indigo-800/60 px-2.5 py-1 rounded-lg"
-                >
-                  Live Run <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
+              <a
+                href={activeJob.runUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium bg-indigo-950/50 border border-indigo-800/60 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <span>Terminal Log</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
             </div>
 
-            {/* Link 1: Direct Streaming Link */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Tv className="w-3.5 h-3.5 text-indigo-400" />
-                  1. Direct Streaming Link (Web &amp; Player)
-                </span>
-                <span className="text-[11px] text-emerald-400 font-mono">Streamable</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={currentResult.streamUrl}
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-indigo-300 font-mono select-all focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(currentResult.streamUrl, 'stream')}
-                  className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700/80"
-                  title="Copy Streaming Link"
-                >
-                  {copiedField === 'stream' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedField === 'stream' ? 'Copied' : 'Copy'}</span>
-                </button>
-                <a
-                  href={currentResult.streamUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-md shadow-indigo-600/20"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Open</span>
-                </a>
+            {/* In Progress Steps Tracker */}
+            {(activeJob.status === 'in_progress' || activeJob.status === 'queued') && (
+              <div className="space-y-3 py-2">
+                <div className="flex items-center gap-2 text-xs text-indigo-300 font-medium">
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                  <span>Real-time Transcode Pipeline Active</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="bg-slate-950/80 border border-indigo-500/30 p-2.5 rounded-xl">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Step 1</span>
+                    <span className="text-slate-200 font-medium mt-0.5 block">Download (aria2c)</span>
+                  </div>
+                  <div className="bg-slate-950/80 border border-indigo-500/30 p-2.5 rounded-xl">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Step 2</span>
+                    <span className="text-slate-200 font-medium mt-0.5 block">FFmpeg H.265 (HEVC)</span>
+                  </div>
+                  <div className="bg-slate-950/80 border border-indigo-500/30 p-2.5 rounded-xl">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Step 3</span>
+                    <span className="text-slate-200 font-medium mt-0.5 block">MTProto 2GB Upload</span>
+                  </div>
+                  <div className="bg-slate-950/80 border border-indigo-500/30 p-2.5 rounded-xl">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Step 4</span>
+                    <span className="text-slate-200 font-medium mt-0.5 block">Supabase UPSERT</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Note: Large files (1GB - 4GB) typically take 2 to 6 minutes to transcode. The links below will unlock as soon as upload finishes.
+                </p>
               </div>
-            </div>
+            )}
 
-            {/* Link 2: Direct Download Link */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
-                  2. Direct Download Link
-                </span>
-                <span className="text-[11px] text-slate-400 font-mono">Full H.265 File</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={currentResult.downloadUrl}
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 font-mono select-all focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(currentResult.downloadUrl, 'download')}
-                  className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700/80"
-                  title="Copy Download Link"
-                >
-                  {copiedField === 'download' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedField === 'download' ? 'Copied' : 'Copy'}</span>
-                </button>
-                <a
-                  href={currentResult.downloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
-                </a>
+            {/* Error Message if Failed */}
+            {activeJob.status === 'failed' && (
+              <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h5 className="font-semibold text-rose-200">Execution Error</h5>
+                  <p className="mt-0.5 text-rose-300/90 leading-relaxed">
+                    The background job encountered an error on the virtual server. Click 'Terminal Log' above to inspect the exact FFmpeg or Telegram output.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Database Row Verification Details */}
-            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs space-y-2">
-              <div className="flex items-center justify-between font-medium text-slate-300">
-                <span className="flex items-center gap-1.5 text-emerald-400">
-                  <Database className="w-3.5 h-3.5" />
-                  Supabase Table 'movies' Row Mapping:
-                </span>
-                <span className="text-[11px] font-mono text-slate-500">Atomic UPSERT</span>
+            {/* Final Links (Displayed only when completed successfully) */}
+            {activeJob.status === 'completed' && activeJob.streamUrl && activeJob.downloadUrl && (
+              <div className="space-y-4 pt-1">
+                {/* Link 1: Direct Streaming Link */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Tv className="w-3.5 h-3.5 text-indigo-400" />
+                      1. Direct Streaming Link (Web &amp; Player)
+                    </span>
+                    <span className="text-[11px] text-emerald-400 font-mono">Streamable</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={activeJob.streamUrl}
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-indigo-300 font-mono select-all focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(activeJob.streamUrl!, 'stream')}
+                      className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700/80"
+                      title="Copy Streaming Link"
+                    >
+                      {copiedField === 'stream' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedField === 'stream' ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <a
+                      href={activeJob.streamUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-md shadow-indigo-600/20"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Open</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Link 2: Direct Download Link */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
+                      2. Direct Download Link
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">Full H.265 File</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={activeJob.downloadUrl}
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 font-mono select-all focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(activeJob.downloadUrl!, 'download')}
+                      className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700/80"
+                      title="Copy Download Link"
+                    >
+                      {copiedField === 'download' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedField === 'download' ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <a
+                      href={activeJob.downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Database Row Verification Details */}
+                <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs space-y-2">
+                  <div className="flex items-center justify-between font-medium text-slate-300">
+                    <span className="flex items-center gap-1.5 text-emerald-400">
+                      <Database className="w-3.5 h-3.5" />
+                      Supabase Table 'movies' Row Mapping Verified:
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-500">Atomic UPSERT</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[11px]">
+                    <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
+                      <span className="text-slate-500 block">tmdb_id</span>
+                      <span className="text-slate-200 font-semibold">{activeJob.tmdbId}</span>
+                    </div>
+                    <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
+                      <span className="text-slate-500 block">table</span>
+                      <span className="text-indigo-300">movies</span>
+                    </div>
+                    <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
+                      <span className="text-slate-500 block">servers</span>
+                      <span className="text-emerald-300 truncate block">Appended [1080p]</span>
+                    </div>
+                    <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
+                      <span className="text-slate-500 block">download_url</span>
+                      <span className="text-slate-300 truncate block">Synced</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[11px]">
-                <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
-                  <span className="text-slate-500 block">tmdb_id</span>
-                  <span className="text-slate-200 font-semibold">{currentResult.columnsUpdated.tmdb_id}</span>
-                </div>
-                <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
-                  <span className="text-slate-500 block">table</span>
-                  <span className="text-indigo-300">{currentResult.columnsUpdated.table}</span>
-                </div>
-                <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
-                  <span className="text-slate-500 block">servers</span>
-                  <span className="text-emerald-300 truncate block">Appended [1080p]</span>
-                </div>
-                <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
-                  <span className="text-slate-500 block">download_url</span>
-                  <span className="text-slate-300 truncate block">Synced</span>
-                </div>
-              </div>
-            </div>
+            )}
           </section>
         )}
       </main>
@@ -532,7 +603,7 @@ export default function App() {
       <footer className="border-t border-slate-800/60 bg-slate-950 py-4">
         <div className="max-w-3xl mx-auto px-4 flex items-center justify-between text-xs text-slate-400">
           <span>Target: <code className="text-slate-300 font-mono">{APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</code></span>
-          <span>Telegram: <code className="text-slate-300 font-mono">{APP_CONFIG.TELEGRAM_CHANNEL_ID}</code></span>
+          <span>Telegram Channel: <code className="text-slate-300 font-mono">{APP_CONFIG.TELEGRAM_CHANNEL_ID}</code></span>
         </div>
       </footer>
     </div>
