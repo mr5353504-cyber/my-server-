@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="bn" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Media Engine</title>
+  <title>অটোমেটেড মিডিয়া ইঞ্জিন</title>
   <meta name="description" content="Automated media processing control dashboard for GitHub Actions video transcode and Supabase/Telegram ingest pipelines." />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -40,7 +40,7 @@
         <p id="toastMessage" class="text-xs text-slate-300 mt-1 leading-relaxed"></p>
         <div id="toastAction" class="hidden mt-2">
           <a id="toastLink" href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1">
-            View Live in GitHub Actions &rarr;
+            গিটহাব অ্যাকশনে লাইভ টার্মিনাল দেখুন &rarr;
           </a>
         </div>
       </div>
@@ -56,17 +56,17 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
           </svg>
         </div>
-        <h1 class="font-semibold text-sm text-white tracking-tight">Media Engine</h1>
+        <h1 class="font-semibold text-sm text-white tracking-tight">অটোমেটেড মিডিয়া ইঞ্জিন</h1>
       </div>
 
       <div class="flex items-center gap-2 text-xs text-slate-400 font-mono">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>Target: mr5353504-cyber/my-server-</span>
+        <span>টার্গেট: mr5353504-cyber/my-server-</span>
       </div>
     </div>
   </header>
 
-  <!-- Main Content -->
+  <!-- Main Workspace -->
   <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col gap-6">
     <!-- Input Form -->
     <section class="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
@@ -76,100 +76,168 @@
             <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
-            Direct Video / Stream URL
+            ভিডিও বা স্ট্রিম লিঙ্ক দিন
           </label>
-          <input type="url" id="sourceUrl" placeholder="https://example.com/video_source.mp4 (or embed / .m3u8)" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
-        </div>
-
-        <div>
-          <label class="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
-            <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-            </svg>
-            TMDb Movie / Show ID
-          </label>
-          <input type="text" id="tmdbId" placeholder="e.g. 157336 (Interstellar)" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
+          <input type="text" id="sourceUrl" placeholder="https://example.com/movie.mp4 বা .m3u8 বা টেস্ট করতে 'test' লিখুন" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
+          <p class="text-[11px] text-slate-400 mt-1.5">
+            সরাসরি MP4 লিঙ্ক, এমবেড প্লেয়ার লিঙ্ক, HLS স্ট্রিম (.m3u8), অথবা টেস্ট রানার চেক করতে <code>test</code> লিখুন।
+          </p>
         </div>
 
         <div class="flex items-center justify-between pt-2">
-          <span class="text-xs text-slate-400">Transcodes H.265 &amp; uploads to Telegram (MTProto)</span>
+          <span class="text-xs text-slate-400">বাটনে চাপ দিলে স্টেপ-বাই-স্টেপ লাইভ প্রসেসিং শুরু হবে</span>
           <button type="submit" id="processBtn" class="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors text-sm shadow-lg shadow-indigo-600/25 flex items-center gap-2">
             <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z"/>
             </svg>
-            <span>Generate / Process</span>
+            <span>প্রসেস শুরু করুন</span>
           </button>
         </div>
       </form>
     </section>
 
-    <!-- Real-time Progress / Results Card -->
-    <section id="trackerCard" class="hidden bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-indigo-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-5">
+    <!-- Step-by-Step Live Processing Timeline -->
+    <section id="trackerCard" class="hidden bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-indigo-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-6">
       <div class="flex items-center justify-between pb-3 border-b border-slate-800">
         <div>
-          <h3 id="trackerHeading" class="font-semibold text-sm text-white">Transcoding in progress...</h3>
-          <p class="text-xs text-slate-400 mt-0.5">TMDb ID: <span id="resTmdbId" class="text-indigo-300 font-mono"></span> · <span id="timerText">Elapsed: 0s</span></p>
+          <h3 id="trackerHeading" class="font-semibold text-sm text-white">রিয়েল-টাইম স্টেপ প্রসেসিং চলছে...</h3>
+          <p class="text-xs text-slate-400 mt-0.5" id="timerText">মোট সময় লেগেছে: 0 সেকেন্ড</p>
         </div>
         <a id="resActionsLink" href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium bg-indigo-950/50 border border-indigo-800/60 px-3 py-1.5 rounded-lg flex items-center gap-1">
-          <span>Terminal Log</span> &rarr;
+          <span>টার্মিনাল লগ</span> &rarr;
         </a>
       </div>
 
-      <!-- In-progress pipeline animation -->
-      <div id="pipelineSteps" class="space-y-3 py-2">
-        <div class="flex items-center gap-2 text-xs text-indigo-300 font-medium">
-          <svg class="w-4 h-4 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-          </svg>
-          <span>Real-time Transcode Pipeline Active</span>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
-          <div class="bg-slate-950/80 border border-indigo-500/30 p-2.5 rounded-xl">
-            <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Step 1</span>
-            <span class="text-slate-200 font-medium mt-0.5 block">Download (aria2c)</span>
-          </div>
-          <div class="bg-slate-950/80 border border-indigo-500/30 p-2.5 rounded-xl">
-            <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Step 2</span>
-            <span class="text-slate-200 font-medium mt-0.5 block">FFmpeg H.265</span>
-          </div>
-          <div class="bg-slate-950/80 border border-indigo-500/30 p-2.5 rounded-xl">
-            <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Step 3</span>
-            <span class="text-slate-200 font-medium mt-0.5 block">MTProto 2GB Upload</span>
-          </div>
-          <div class="bg-slate-950/80 border border-indigo-500/30 p-2.5 rounded-xl">
-            <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Step 4</span>
-            <span class="text-slate-200 font-medium mt-0.5 block">Supabase UPSERT</span>
+      <!-- 5 Interactive Steps List -->
+      <div class="space-y-3" id="stepsContainer">
+        <!-- Step 1 -->
+        <div id="stepCard1" class="p-3.5 rounded-xl border bg-indigo-950/40 border-indigo-500/60 text-indigo-200 flex items-start gap-3.5">
+          <div id="stepIcon1" class="mt-0.5 flex-shrink-0"></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ১: লিঙ্ক বিশ্লেষণ ও যাচাইকরণ</h4>
+              <span id="stepBadge1" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">চলছে</span>
+            </div>
+            <p id="stepDesc1" class="text-xs text-slate-400 mt-1">লিঙ্কটি কি ভিডিও, এমবেড নাকি স্ট্রিম তা পরীক্ষা করে ডাউনলোডের উপযোগী করা হচ্ছে</p>
           </div>
         </div>
-        <p class="text-[11px] text-slate-400">Large video files take 2-5 minutes to transcode. Links will appear here once complete.</p>
+
+        <!-- Step 2 -->
+        <div id="stepCard2" class="p-3.5 rounded-xl border bg-slate-950/40 border-slate-800/60 text-slate-400 opacity-60 flex items-start gap-3.5">
+          <div id="stepIcon2" class="mt-0.5 flex-shrink-0"></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ২: ক্লাউড সার্ভারে ভিডিও ডাউনলোড</h4>
+              <span id="stepBadge2" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">অপেক্ষমান</span>
+            </div>
+            <p id="stepDesc2" class="text-xs text-slate-400 mt-1">গিটহাব অ্যাকশন ক্লাউড রানারে হাই-স্পিড মাল্টি-কানেকশন দিয়ে ডাউনলোড চলছে</p>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div id="stepCard3" class="p-3.5 rounded-xl border bg-slate-950/40 border-slate-800/60 text-slate-400 opacity-60 flex items-start gap-3.5">
+          <div id="stepIcon3" class="mt-0.5 flex-shrink-0"></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ৩: H.265 (HEVC) আল্ট্রা কমপ্রেশন</h4>
+              <span id="stepBadge3" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">অপেক্ষমান</span>
+            </div>
+            <p id="stepDesc3" class="text-xs text-slate-400 mt-1">FFmpeg দিয়ে কোয়ালিটি অক্ষুণ্ণ রেখে সাইজ ২ জিবির নিচে কমপ্রেস ও অপ্টিমাইজেশন</p>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div id="stepCard4" class="p-3.5 rounded-xl border bg-slate-950/40 border-slate-800/60 text-slate-400 opacity-60 flex items-start gap-3.5">
+          <div id="stepIcon4" class="mt-0.5 flex-shrink-0"></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ৪: টেলিগ্রাম চ্যানেলে আপলোড</h4>
+              <span id="stepBadge4" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">অপেক্ষমান</span>
+            </div>
+            <p id="stepDesc4" class="text-xs text-slate-400 mt-1">টেলিগ্রাম বট ও MTProto ইঞ্জিন দিয়ে চ্যানেলে ভিডিও আপলোড সম্পন্ন করা</p>
+          </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div id="stepCard5" class="p-3.5 rounded-xl border bg-slate-950/40 border-slate-800/60 text-slate-400 opacity-60 flex items-start gap-3.5">
+          <div id="stepIcon5" class="mt-0.5 flex-shrink-0"></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-xs sm:text-sm text-slate-200">স্টেপ ৫: স্ট্রিমিং ও ডাউনলোড লিংক জেনারেট</h4>
+              <span id="stepBadge5" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500">অপেক্ষমান</span>
+            </div>
+            <p id="stepDesc5" class="text-xs text-slate-400 mt-1">সরাসরি স্ট্রিমিং ও হাই-স্পিড ডাউনলোড লিংক প্রস্তুত করা</p>
+          </div>
+        </div>
       </div>
 
-      <!-- Links container (revealed only upon successful completion) -->
-      <div id="finalLinksBox" class="hidden space-y-4 pt-1">
+      <!-- Final Links (Appears automatically when Step 4 & 5 finish) -->
+      <div id="finalLinksBox" class="hidden space-y-4 pt-3 border-t border-slate-800/80">
+        <div class="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          </svg>
+          <span>টেলিগ্রাম থেকে ২টি লিংক স্বয়ংক্রিয়ভাবে তৈরি হয়েছে:</span>
+        </div>
+
         <!-- Link 1: Direct Streaming Link -->
         <div class="space-y-1.5">
           <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
-            <span>1. Direct Streaming Link (Web &amp; Player)</span>
-            <span class="text-[11px] text-emerald-400 font-mono">Streamable</span>
+            <span>১. ডিরেক্ট স্ট্রিমিং লিংক (Direct Streaming Link)</span>
+            <span class="text-[11px] text-emerald-400 font-mono">Stream Ready</span>
           </label>
           <div class="flex items-center gap-2">
             <input type="text" id="streamUrlInput" readonly class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-indigo-300 font-mono select-all focus:outline-none" />
-            <button type="button" id="copyStreamBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Copy</button>
-            <a id="openStreamLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium">Open</a>
+            <button type="button" id="copyStreamBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">কপি</button>
+            <a id="openStreamLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium">ওপেন</a>
           </div>
         </div>
 
         <!-- Link 2: Direct Download Link -->
         <div class="space-y-1.5">
           <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
-            <span>2. Direct Download Link</span>
+            <span>২. ডিরেক্ট ডাউনলোড লিংক (Direct Download Link)</span>
             <span class="text-[11px] text-slate-400 font-mono">Full H.265 File</span>
           </label>
           <div class="flex items-center gap-2">
             <input type="text" id="downloadUrlInput" readonly class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 font-mono select-all focus:outline-none" />
-            <button type="button" id="copyDownloadBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Copy</button>
-            <a id="openDownloadLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">Download</a>
+            <button type="button" id="copyDownloadBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">কপি</button>
+            <a id="openDownloadLink" href="#" target="_blank" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700">ডাউনলোড</a>
+          </div>
+        </div>
+
+        <!-- Dedicated Supabase Upload Box (Below the 2 links) -->
+        <div class="mt-6 pt-5 border-t border-slate-800/90 bg-slate-950/80 p-5 rounded-2xl border border-indigo-500/30 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7z" />
+                </svg>
+              </div>
+              <div>
+                <h4 class="font-semibold text-xs sm:text-sm text-white">সাফা বেইজে (Supabase) আপলোড সেকশন</h4>
+                <p class="text-[11px] text-slate-400">টিএমডিবি আইডি দিয়ে সাফা বেইজ ডাটাবেসে সেভ করুন</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row items-center gap-3">
+            <div class="w-full sm:flex-1">
+              <input type="text" id="supabaseTmdbId" value="157336" placeholder="TMDb Movie/Show ID (যেমন: 157336)" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
+            </div>
+            <button type="button" id="supabaseUploadBtn" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-medium py-2.5 px-5 rounded-xl transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm shadow-lg shadow-emerald-600/20">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+              <span>সাফা বেইজে আপলোড করুন</span>
+            </button>
+          </div>
+
+          <!-- Supabase Feedback Badge -->
+          <div id="supabaseFeedback" class="hidden p-3 rounded-xl border flex items-center gap-2.5 text-xs">
+            <div id="supabaseFeedbackIcon"></div>
+            <span id="supabaseFeedbackText" class="font-medium"></span>
           </div>
         </div>
       </div>
@@ -179,8 +247,8 @@
   <!-- Footer -->
   <footer class="border-t border-slate-800/60 bg-slate-950 py-4">
     <div class="max-w-3xl mx-auto px-4 flex items-center justify-between text-xs text-slate-400">
-      <span>Target: <code class="text-slate-300 font-mono">mr5353504-cyber/my-server-</code></span>
-      <span>Telegram: <code class="text-slate-300 font-mono">-1004408587176</code></span>
+      <span>টার্গেট: <code class="text-slate-300 font-mono">mr5353504-cyber/my-server-</code></span>
+      <span>চ্যানেল আইডি: <code class="text-slate-300 font-mono">-1004408587176</code></span>
     </div>
   </footer>
 
@@ -193,8 +261,25 @@
     };
 
     const sourceUrlInput = document.getElementById('sourceUrl');
-    const tmdbIdInput = document.getElementById('tmdbId');
     const processBtn = document.getElementById('processBtn');
+    const trackerCard = document.getElementById('trackerCard');
+    const trackerHeading = document.getElementById('trackerHeading');
+    const timerText = document.getElementById('timerText');
+    const resActionsLink = document.getElementById('resActionsLink');
+
+    const finalLinksBox = document.getElementById('finalLinksBox');
+    const streamUrlInput = document.getElementById('streamUrlInput');
+    const downloadUrlInput = document.getElementById('downloadUrlInput');
+    const copyStreamBtn = document.getElementById('copyStreamBtn');
+    const copyDownloadBtn = document.getElementById('copyDownloadBtn');
+    const openStreamLink = document.getElementById('openStreamLink');
+    const openDownloadLink = document.getElementById('openDownloadLink');
+
+    const supabaseTmdbId = document.getElementById('supabaseTmdbId');
+    const supabaseUploadBtn = document.getElementById('supabaseUploadBtn');
+    const supabaseFeedback = document.getElementById('supabaseFeedback');
+    const supabaseFeedbackIcon = document.getElementById('supabaseFeedbackIcon');
+    const supabaseFeedbackText = document.getElementById('supabaseFeedbackText');
 
     const toastBox = document.getElementById('toastBox');
     const toastTitle = document.getElementById('toastTitle');
@@ -203,20 +288,6 @@
     const toastClose = document.getElementById('toastClose');
     const toastAction = document.getElementById('toastAction');
     const toastLink = document.getElementById('toastLink');
-
-    const trackerCard = document.getElementById('trackerCard');
-    const trackerHeading = document.getElementById('trackerHeading');
-    const timerText = document.getElementById('timerText');
-    const resTmdbId = document.getElementById('resTmdbId');
-    const resActionsLink = document.getElementById('resActionsLink');
-    const pipelineSteps = document.getElementById('pipelineSteps');
-    const finalLinksBox = document.getElementById('finalLinksBox');
-    const streamUrlInput = document.getElementById('streamUrlInput');
-    const downloadUrlInput = document.getElementById('downloadUrlInput');
-    const copyStreamBtn = document.getElementById('copyStreamBtn');
-    const copyDownloadBtn = document.getElementById('copyDownloadBtn');
-    const openStreamLink = document.getElementById('openStreamLink');
-    const openDownloadLink = document.getElementById('openDownloadLink');
 
     let timerInterval = null;
     let pollInterval = null;
@@ -241,89 +312,80 @@
         setTimeout(() => toastBox.classList.add('hidden'), 7000);
       }
     }
-
     toastClose.addEventListener('click', () => toastBox.classList.add('hidden'));
 
-    function startLivePolling(tmdbId, actionsUrl) {
-      clearInterval(timerInterval);
-      clearInterval(pollInterval);
-      secondsElapsed = 0;
+    function setStep(id, status, errorMsg) {
+      const card = document.getElementById(`stepCard${id}`);
+      const icon = document.getElementById(`stepIcon${id}`);
+      const badge = document.getElementById(`stepBadge${id}`);
+      const desc = document.getElementById(`stepDesc${id}`);
 
-      resTmdbId.textContent = `#${tmdbId}`;
-      resActionsLink.href = actionsUrl;
-      trackerHeading.textContent = 'Transcoding live on GitHub Actions runner...';
-      pipelineSteps.classList.remove('hidden');
-      finalLinksBox.classList.add('hidden');
-      trackerCard.classList.remove('hidden');
+      card.className = "p-3.5 rounded-xl border flex items-start gap-3.5 transition-all duration-300";
 
-      timerInterval = setInterval(() => {
-        secondsElapsed++;
-        const mins = Math.floor(secondsElapsed / 60);
-        const s = secondsElapsed % 60;
-        timerText.textContent = `Elapsed: ${mins}m ${s < 10 ? '0' : ''}${s}s`;
-      }, 1000);
-
-      pollInterval = setInterval(async () => {
-        try {
-          const res = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/actions/runs?per_page=5`, {
-            headers: {
-              'Accept': 'application/vnd.github.v3+json',
-              'Authorization': `Bearer ${CONFIG.PAT}`
-            }
-          });
-          if (!res.ok) return;
-          const data = await res.json();
-          const latest = (data.workflow_runs || [])[0];
-
-          if (latest) {
-            resActionsLink.href = latest.html_url;
-            if (latest.status === 'completed') {
-              clearInterval(timerInterval);
-              clearInterval(pollInterval);
-
-              if (latest.conclusion === 'success') {
-                trackerHeading.textContent = 'Processing Complete! Links Ready';
-                pipelineSteps.classList.add('hidden');
-                finalLinksBox.classList.remove('hidden');
-
-                const streamUrl = `https://t.me/c/${CONFIG.CHANNEL}`;
-                const downloadUrl = `https://t.me/c/${CONFIG.CHANNEL}?download=true`;
-                streamUrlInput.value = streamUrl;
-                downloadUrlInput.value = downloadUrl;
-                openStreamLink.href = streamUrl;
-                openDownloadLink.href = downloadUrl;
-
-                showToast('success', 'Completed!', 'Video uploaded to Telegram & saved to Supabase.', latest.html_url);
-              } else {
-                trackerHeading.textContent = 'Execution Failed on Runner';
-                showToast('error', 'Execution Error', 'Click Terminal Log to check runner error details.', latest.html_url);
-              }
-            }
-          }
-        } catch (_) {}
-      }, 5000);
+      if (status === 'completed') {
+        card.classList.add("bg-emerald-950/20", "border-emerald-500/40", "text-emerald-300");
+        icon.innerHTML = `<div class="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400"><svg class="w-3.5 h-3.5 stroke-[3]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>`;
+        badge.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/40";
+        badge.textContent = "সফল (Done)";
+      } else if (status === 'active') {
+        card.classList.add("bg-indigo-950/40", "border-indigo-500/60", "text-indigo-200", "shadow-md");
+        icon.innerHTML = `<div class="w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-400 flex items-center justify-center text-indigo-400"><svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></div>`;
+        badge.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 animate-pulse";
+        badge.textContent = "চলছে";
+      } else if (status === 'failed') {
+        card.classList.add("bg-rose-950/30", "border-rose-500/50", "text-rose-300");
+        icon.innerHTML = `<div class="w-6 h-6 rounded-full bg-rose-500/20 border border-rose-400 flex items-center justify-center text-rose-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>`;
+        badge.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-rose-500/20 text-rose-400 border border-rose-500/40";
+        badge.textContent = "ব্যর্থ";
+        if (errorMsg) desc.innerHTML = `<span class="text-rose-400 font-semibold">${errorMsg}</span>`;
+      } else {
+        card.classList.add("bg-slate-950/40", "border-slate-800/60", "text-slate-400", "opacity-60");
+        icon.innerHTML = `<div class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-xs font-mono font-medium">${id}</div>`;
+        badge.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-500";
+        badge.textContent = "অপেক্ষমান";
+      }
     }
 
+    // Reset steps to initial
+    function resetSteps() {
+      for (let i = 1; i <= 5; i++) {
+        setStep(i, 'pending');
+      }
+      finalLinksBox.classList.add('hidden');
+      supabaseFeedback.classList.add('hidden');
+    }
+
+    // Copy handlers
     copyStreamBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(streamUrlInput.value);
-      copyStreamBtn.textContent = 'Copied!';
-      setTimeout(() => copyStreamBtn.textContent = 'Copy', 2000);
+      copyStreamBtn.textContent = 'কপি হয়েছে!';
+      setTimeout(() => copyStreamBtn.textContent = 'কপি', 2000);
     });
 
     copyDownloadBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(downloadUrlInput.value);
-      copyDownloadBtn.textContent = 'Copied!';
-      setTimeout(() => copyDownloadBtn.textContent = 'Copy', 2000);
+      copyDownloadBtn.textContent = 'কপি হয়েছে!';
+      setTimeout(() => copyDownloadBtn.textContent = 'কপি', 2000);
     });
 
-    document.getElementById('mediaForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const url = sourceUrlInput.value.trim();
-      const tmdb = tmdbIdInput.value.trim() || '157336';
-      processBtn.disabled = true;
-      showToast('loading', 'Starting Engine...', 'Dispatching job to GitHub Actions virtual runner...');
+    // Step 6: Supabase Upload
+    supabaseUploadBtn.addEventListener('click', async () => {
+      const tmdbId = supabaseTmdbId.value.trim();
+      if (!tmdbId) {
+        showToast('error', 'TMDb ID প্রয়োজন', 'অনুগ্রহ করে একটি সঠিক TMDb Movie ID দিন।');
+        return;
+      }
+
+      supabaseUploadBtn.disabled = true;
+      supabaseFeedback.className = "p-3 rounded-xl border flex items-center gap-2.5 text-xs bg-indigo-950/40 border-indigo-500/50 text-indigo-300";
+      supabaseFeedbackIcon.innerHTML = `<svg class="w-4 h-4 text-indigo-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>`;
+      supabaseFeedbackText.textContent = "সাফা বেইজ ডাটাবেসে সেভ করা হচ্ছে...";
+      supabaseFeedback.classList.remove('hidden');
 
       try {
+        const streamUrl = streamUrlInput.value || `https://t.me/c/${CONFIG.CHANNEL}`;
+        const downloadUrl = downloadUrlInput.value || `${streamUrl}?download=true`;
+
         const res = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/dispatches`, {
           method: 'POST',
           headers: {
@@ -332,25 +394,156 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            event_type: 'process_video',
-            client_payload: { source_url: url, tmdb_id: tmdb }
+            event_type: 'sync_supabase',
+            client_payload: {
+              action: 'sync_supabase',
+              tmdb_id: tmdbId,
+              stream_url: streamUrl,
+              download_url: downloadUrl
+            }
           })
         });
 
         if (res.status === 204) {
-          const runUrl = `https://github.com/${CONFIG.OWNER}/${CONFIG.REPO}/actions`;
-          showToast('success', 'Job Dispatched to Runner!', 'Virtual runner is now processing. Live status below.', runUrl);
-          startLivePolling(tmdb, runUrl);
+          supabaseFeedback.className = "p-3 rounded-xl border flex items-center gap-2.5 text-xs bg-emerald-950/40 border-emerald-500/50 text-emerald-300";
+          supabaseFeedbackIcon.innerHTML = `<svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`;
+          supabaseFeedbackText.textContent = `সাফা বেইজে সফলভাবে আপলোড সম্পন্ন হয়েছে! (TMDb #${tmdbId})`;
+          showToast('success', 'সাফা বেইজে আপলোড সফল!', `'movies' টেবিলে #${tmdbId} এর ডাটা সেভ হয়েছে।`);
         } else {
-          let data = {};
-          try { data = await res.json(); } catch(_) {}
-          throw new Error(data.message || `HTTP ${res.status}`);
+          throw new Error(`HTTP ${res.status}`);
         }
       } catch (err) {
-        showToast('error', 'Dispatch Failed', err.message);
+        supabaseFeedback.className = "p-3 rounded-xl border flex items-center gap-2.5 text-xs bg-rose-950/40 border-rose-500/50 text-rose-300";
+        supabaseFeedbackIcon.innerHTML = `<svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+        supabaseFeedbackText.textContent = `সাফা বেইজ আপলোড ব্যর্থ: ${err.message}`;
       } finally {
-        processBtn.disabled = false;
+        supabaseUploadBtn.disabled = false;
       }
+    });
+
+    // Form Submission: Main Pipeline
+    document.getElementById('mediaForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const url = sourceUrlInput.value.trim();
+      processBtn.disabled = true;
+      resetSteps();
+      trackerCard.classList.remove('hidden');
+
+      secondsElapsed = 0;
+      clearInterval(timerInterval);
+      clearInterval(pollInterval);
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        timerText.textContent = `মোট সময় লেগেছে: ${secondsElapsed} সেকেন্ড`;
+      }, 1000);
+
+      // Step 1: Link Inspection
+      setStep(1, 'active');
+
+      setTimeout(async () => {
+        const isValid = url.startsWith('http://') || url.startsWith('https://') || url.toLowerCase() === 'test';
+        if (!isValid) {
+          setStep(1, 'failed', 'ভুল লিঙ্ক ফরম্যাট! লিঙ্কটি https:// বা http:// দিয়ে শুরু হতে হবে।');
+          processBtn.disabled = false;
+          clearInterval(timerInterval);
+          return;
+        }
+
+        // Step 1 Success
+        setStep(1, 'completed');
+        setStep(2, 'active');
+
+        try {
+          const res = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/dispatches`, {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/vnd.github.v3+json',
+              'Authorization': `Bearer ${CONFIG.PAT}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              event_type: 'process_video',
+              client_payload: {
+                source_url: url,
+                tmdb_id: supabaseTmdbId.value.trim() || '157336'
+              }
+            })
+          });
+
+          if (res.status === 204) {
+            const runUrl = `https://github.com/${CONFIG.OWNER}/${CONFIG.REPO}/actions`;
+            resActionsLink.href = runUrl;
+            showToast('loading', 'গিটহাব রানার সক্রিয়!', 'ক্লাউড সার্ভারে ভিডিও ডাউনলোড ও প্রসেসিং চলছে...', runUrl);
+
+            // Poll GitHub Actions run
+            pollInterval = setInterval(async () => {
+              try {
+                const rRes = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/actions/runs?per_page=3`, {
+                  headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `Bearer ${CONFIG.PAT}` }
+                });
+                if (!rRes.ok) return;
+                const rData = await rRes.json();
+                const latest = (rData.workflow_runs || [])[0];
+                if (!latest) return;
+
+                resActionsLink.href = latest.html_url;
+
+                const jRes = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/actions/runs/${latest.id}/jobs`, {
+                  headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `Bearer ${CONFIG.PAT}` }
+                });
+                if (!jRes.ok) return;
+                const jData = await jRes.json();
+                const job = (jData.jobs || [])[0];
+
+                if (job) {
+                  const execStep = (job.steps || []).find(s => s.name.includes('Execute Media Processing Engine'));
+                  if (execStep) {
+                    if (execStep.status === 'in_progress') {
+                      setStep(1, 'completed');
+                      setStep(2, 'completed');
+                      setStep(3, 'active');
+                    } else if (execStep.status === 'completed') {
+                      if (execStep.conclusion === 'success') {
+                        setStep(1, 'completed');
+                        setStep(2, 'completed');
+                        setStep(3, 'completed');
+                        setStep(4, 'completed');
+                        setStep(5, 'completed');
+
+                        clearInterval(timerInterval);
+                        clearInterval(pollInterval);
+                        processBtn.disabled = false;
+
+                        const sUrl = `https://t.me/c/${CONFIG.CHANNEL}`;
+                        const dUrl = `https://t.me/c/${CONFIG.CHANNEL}?download=true`;
+                        streamUrlInput.value = sUrl;
+                        downloadUrlInput.value = dUrl;
+                        openStreamLink.href = sUrl;
+                        openDownloadLink.href = dUrl;
+                        finalLinksBox.classList.remove('hidden');
+
+                        showToast('success', 'প্রসেসিং সম্পূর্ণ!', 'ভিডিও টেলিগ্রামে আপলোড ও লিংক প্রস্তুত হয়েছে।', latest.html_url);
+                      } else {
+                        setStep(3, 'failed', 'গিটহাব রানারে প্রসেসিং চলাকালীন সমস্যা হয়েছে।');
+                        clearInterval(timerInterval);
+                        clearInterval(pollInterval);
+                        processBtn.disabled = false;
+                      }
+                    }
+                  }
+                }
+              } catch (_) {}
+            }, 4000);
+
+          } else {
+            throw new Error(`HTTP ${res.status}`);
+          }
+        } catch (err) {
+          setStep(2, 'failed', err.message);
+          processBtn.disabled = false;
+          clearInterval(timerInterval);
+        }
+      }, 1000);
     });
   </script>
 </body>
