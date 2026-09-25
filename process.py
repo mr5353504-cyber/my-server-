@@ -380,10 +380,11 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
         logger.warning("Supabase package not imported. Skipping database sync.")
         return
 
-    clean_url = supabase_url.strip().strip("'").strip('"').strip('[').strip(']')
-    if clean_url.startswith("https://") or clean_url.startswith("http://"):
-        pass
-    else:
+    clean_url = supabase_url.strip().strip("'").strip('"')
+    if "](" in clean_url:
+        clean_url = clean_url.split("](")[0]
+    clean_url = clean_url.replace("[", "").replace("]", "").replace(")", "").replace("(", "").strip()
+    if not clean_url.startswith("https://") and not clean_url.startswith("http://"):
         clean_url = f"https://{clean_url}"
     clean_url = clean_url.rstrip("/")
 
