@@ -362,8 +362,10 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
         return
 
     # Clean and normalize Supabase URL
-    clean_url = supabase_url.strip().strip("'").strip('"')
-    if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
+    clean_url = supabase_url.strip().strip("'").strip('"').strip('[').strip(']')
+    if clean_url.startswith("https://") or clean_url.startswith("http://"):
+        pass
+    else:
         clean_url = f"https://{clean_url}"
     clean_url = clean_url.rstrip("/")
 
