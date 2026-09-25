@@ -5,13 +5,12 @@ Automated Media Processing Engine (MTProto 2GB Single-File Pipeline)
 1. Input Ingestion:
    - Reads TMDB_ID and SOURCE_URL from environment or GitHub Actions event payload.
 2. Embed, Direct & HLS Streaming Download:
-   - Supports Direct URLs, Embed URLs, and HLS playlists (.m3u8).
-   - Robust multi-stream download via yt-dlp with chunked fallback.
+   - Supports Direct URLs, Embed URLs, HLS playlists (.m3u8), and instant test mode ('test').
 3. Large File Compression (H.265/HEVC):
    - Dynamic bitrate calculation ensures video file size is strictly < 2GB.
    - Encodes via FFmpeg libx265 with AAC audio and +faststart flag.
-4. MTProto Telegram Upload (Telethon / Bot API):
-   - Direct MTProto single-file video upload to Telegram Channel.
+4. Telegram Upload (Bot API / Telethon MTProto):
+   - Fast direct upload to Telegram Channel -1004408587176.
 5. TMDb v3 Integration & Supabase Atomic UPSERT:
    - Queries TMDb API v3 for Title, Overview, Poster Path, and Release Date.
    - Upserts record directly into Supabase 'movies' table.
@@ -28,17 +27,14 @@ from datetime import datetime
 from pathlib import Path
 import requests
 
-# Supabase Client
 try:
     from supabase import create_client, Client
 except ImportError:
     Client = None
     create_client = None
 
-# Telethon MTProto Client
 try:
     from telethon import TelegramClient
-    from telethon.tl.types import DocumentAttributeVideo
 except ImportError:
     TelegramClient = None
 
@@ -111,14 +107,28 @@ def get_media_duration_seconds(file_path: str) -> float:
 
 def download_media(source_url: str, output_dir: Path) -> Path:
     """
-    Download video from source_url with high resilience:
-    - Direct URLs (.mp4, .mkv, etc.)
-    - Embed players & HLS streams (.m3u8)
-    - Fallback: Streamed requests chunk downloader
+    Download video or generate test sample:
+    - If source_url == 'test', synthesizes a test video via FFmpeg.
+    - Otherwise, downloads via yt-dlp or chunked requests fallback.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    raw_template = str(output_dir / "input_media.%(ext)s")
+    fallback_file = output_dir / "input_media.mp4"
+
+    # Instant Self-Verification / Test Mode
+    if source_url.lower().strip() == "test":
+        logger.info("Test Mode Activated: Generating verified test video pattern via FFmpeg...")
+        gen_cmd = [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", "testsrc=duration=5:size=1280x720:rate=30",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=5",
+            "-c:v", "libx264", "-c:a", "aac",
+            str(fallback_file)
+        ]
+        subprocess.run(gen_cmd, check=True)
+        return fallback_file
+
     logger.info(f"Downloading stream/embed media from: {source_url}")
+    raw_template = str(output_dir / "input_media.%(ext)s")
 
     ytdlp_cmd = [
         "yt-dlp",
@@ -136,12 +146,11 @@ def download_media(source_url: str, output_dir: Path) -> Path:
         subprocess.run(ytdlp_cmd, check=True)
         download_success = True
     except Exception as err:
-        logger.warning(f"yt-dlp failed or partial ({err}). Trying direct streaming fallback...")
+        logger.warning(f"yt-dlp could not fetch stream directly ({err}). Trying direct streaming fallback...")
 
     matching_files = [f for f in output_dir.glob("input_media.*") if f.is_file() and not f.name.endswith(".part")]
 
     if not matching_files or not download_success:
-        fallback_file = output_dir / "input_media.mp4"
         if ".m3u8" in source_url.lower():
             logger.info("Attempting FFmpeg stream copy for m3u8 playlist...")
             ffmpeg_cmd = ["ffmpeg", "-y", "-i", source_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", str(fallback_file)]
@@ -167,16 +176,12 @@ def download_media(source_url: str, output_dir: Path) -> Path:
 
 
 def transcode_to_h265(input_path: Path, output_path: Path) -> Path:
-    """
-    Compress video to H.265 (HEVC).
-    If the file is already small (< 50MB), it optimizes quickly.
-    """
+    """Compress video to H.265 (HEVC)."""
     logger.info(f"Starting H.265 compression for: {input_path}")
     duration = get_media_duration_seconds(str(input_path))
     input_size = input_path.stat().st_size
     input_size_mb = input_size / (1024 * 1024)
 
-    # For small test files (< 60MB), optimize preset for ultra fast execution
     is_small_file = input_size_mb < 60
     preset = "ultrafast" if is_small_file else "medium"
 
@@ -252,14 +257,13 @@ async def upload_via_telethon(bot_token: str, channel_id: str, video_path: Path,
 
 
 def upload_to_telegram(bot_token: str, channel_id: str, video_path: Path, caption: str) -> dict:
-    """Telegram uploader with MTProto primary and HTTP Bot API fallback."""
+    """Telegram uploader with direct Bot API for files < 45MB and Telethon MTProto for 45MB-2GB."""
     api_id = int(os.environ.get("TELEGRAM_API_ID") or DEFAULT_TELEGRAM_API_ID)
     api_hash = os.environ.get("TELEGRAM_API_HASH") or DEFAULT_TELEGRAM_API_HASH
 
-    # If file size is under 45MB, HTTP Bot API is faster and requires no phone/session
     file_size_mb = video_path.stat().st_size / (1024 * 1024)
     if file_size_mb < 45:
-        logger.info(f"File size is {file_size_mb:.2f} MB (< 45MB). Using direct Bot API for instant delivery...")
+        logger.info(f"File size is {file_size_mb:.2f} MB (< 45MB). Using direct Bot API for rapid delivery...")
         url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
         with open(video_path, "rb") as video_file:
             files = {"video": (video_path.name, video_file, "video/mp4")}
@@ -433,7 +437,7 @@ def main():
         # 1. TMDb
         metadata = fetch_tmdb_metadata(tmdb_api_key, tmdb_id)
 
-        # 2. Download Media
+        # 2. Download / Synthesize Media
         raw_video = download_media(source_url, work_dir)
 
         # 3. Transcode to H.265
@@ -441,7 +445,7 @@ def main():
         transcode_to_h265(raw_video, compressed_video)
 
         # 4. Telegram Upload
-        caption = f"🎬 {metadata['title']} ({metadata['release_date'][:4] if metadata['release_date'] else 'N/A'})\n\n{metadata['overview'][:300]}...\n\n✅ Verified by Media Pipeline"
+        caption = f"🎬 {metadata['title']} ({metadata['release_date'][:4] if metadata['release_date'] else 'N/A'})\n\n{metadata['overview'][:300]}...\n\n✅ Verified Media Pipeline | H.265 HEVC"
         upload_data = upload_to_telegram(telegram_bot_token, telegram_channel_id, compressed_video, caption)
 
         # 5. Supabase UPSERT
