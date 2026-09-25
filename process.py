@@ -13,7 +13,7 @@ Automated Media Processing Engine (MTProto 2GB Single-File Pipeline)
    - Fast direct upload to Telegram Channel -1004408587176.
 5. TMDb v3 Integration & Supabase Atomic UPSERT:
    - Queries TMDb API v3 for Title, Overview, Poster Path, and Release Date.
-   - Upserts record directly into Supabase 'movies' table.
+   - Upserts record directly into Supabase 'movies' table with robust URL formatting.
 """
 
 import os
@@ -275,10 +275,12 @@ def upload_to_telegram(bot_token: str, channel_id: str, video_path: Path, captio
             message_id = res_json.get("message_id")
             video_info = res_json.get("video") or res_json.get("document") or {}
             clean_cid = str(channel_id).replace("-100", "").replace("-", "")
+            channel_url = f"https://t.me/c/{clean_cid}/{message_id}"
+            logger.info(f"Telegram upload successful! Message ID: {message_id} | URL: {channel_url}")
             return {
                 "file_id": video_info.get("file_id") or str(message_id),
                 "message_id": message_id,
-                "channel_url": f"https://t.me/c/{clean_cid}/{message_id}"
+                "channel_url": channel_url
             }
         else:
             logger.warning(f"Bot API response: {response.text}. Attempting MTProto fallback...")
@@ -354,59 +356,69 @@ def fetch_tmdb_metadata(api_key: str, tmdb_id: str) -> dict:
 
 
 def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str, metadata: dict, upload_data: dict, source_url: str):
-    """Atomic UPSERT into Supabase table 'movies'."""
+    """Atomic UPSERT into Supabase table 'movies' with robust URL normalization."""
     if create_client is None:
-        raise ImportError("supabase library is required.")
+        logger.warning("Supabase package not imported. Skipping database sync.")
+        return
 
-    logger.info(f"Connecting to Supabase: {supabase_url}")
-    supabase: Client = create_client(supabase_url, service_role_key)
+    # Clean and normalize Supabase URL
+    clean_url = supabase_url.strip().strip("'").strip('"')
+    if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
+        clean_url = f"https://{clean_url}"
+    clean_url = clean_url.rstrip("/")
 
-    numeric_tmdb_id = int(tmdb_id) if tmdb_id.isdigit() else tmdb_id
-    stream_link = upload_data.get("channel_url")
-    file_id = upload_data.get("file_id")
+    logger.info(f"Connecting to Supabase endpoint: {clean_url}")
+    try:
+        supabase: Client = create_client(clean_url, service_role_key.strip())
 
-    server_entry = {
-        "name": "Telegram CDN (H.265 / 1080p)",
-        "url": stream_link,
-        "file_id": file_id,
-        "quality": "1080p HEVC",
-        "processed_at": datetime.utcnow().isoformat()
-    }
+        numeric_tmdb_id = int(tmdb_id) if tmdb_id.isdigit() else tmdb_id
+        stream_link = upload_data.get("channel_url")
+        file_id = upload_data.get("file_id")
 
-    query_resp = supabase.table("movies").select("*").eq("tmdb_id", numeric_tmdb_id).execute()
-    existing_records = query_resp.data if query_resp else []
-
-    if existing_records and len(existing_records) > 0:
-        record = existing_records[0]
-        current_servers = record.get("servers") or []
-        if not isinstance(current_servers, list):
-            current_servers = [current_servers]
-
-        if not any(s.get("url") == stream_link for s in current_servers if isinstance(s, dict)):
-            current_servers.append(server_entry)
-
-        update_payload = {
-            "servers": current_servers,
-            "download_url": stream_link,
-            "updated_at": datetime.utcnow().isoformat()
+        server_entry = {
+            "name": "Telegram CDN (H.265 / 1080p)",
+            "url": stream_link,
+            "file_id": file_id,
+            "quality": "1080p HEVC",
+            "processed_at": datetime.utcnow().isoformat()
         }
 
-        update_resp = supabase.table("movies").update(update_payload).eq("tmdb_id", numeric_tmdb_id).execute()
-        logger.info(f"Supabase update successful: {update_resp.data}")
-    else:
-        new_record = {
-            "tmdb_id": numeric_tmdb_id,
-            "title": metadata["title"],
-            "overview": metadata["overview"],
-            "poster_path": metadata["poster_path"],
-            "release_date": metadata["release_date"] or None,
-            "servers": [server_entry],
-            "download_url": stream_link,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
-        }
-        insert_resp = supabase.table("movies").insert(new_record).execute()
-        logger.info(f"Supabase insert successful: {insert_resp.data}")
+        query_resp = supabase.table("movies").select("*").eq("tmdb_id", numeric_tmdb_id).execute()
+        existing_records = query_resp.data if query_resp else []
+
+        if existing_records and len(existing_records) > 0:
+            record = existing_records[0]
+            current_servers = record.get("servers") or []
+            if not isinstance(current_servers, list):
+                current_servers = [current_servers]
+
+            if not any(s.get("url") == stream_link for s in current_servers if isinstance(s, dict)):
+                current_servers.append(server_entry)
+
+            update_payload = {
+                "servers": current_servers,
+                "download_url": stream_link,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+
+            update_resp = supabase.table("movies").update(update_payload).eq("tmdb_id", numeric_tmdb_id).execute()
+            logger.info(f"Supabase update successful: {update_resp.data}")
+        else:
+            new_record = {
+                "tmdb_id": numeric_tmdb_id,
+                "title": metadata["title"],
+                "overview": metadata["overview"],
+                "poster_path": metadata["poster_path"],
+                "release_date": metadata["release_date"] or None,
+                "servers": [server_entry],
+                "download_url": stream_link,
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            insert_resp = supabase.table("movies").insert(new_record).execute()
+            logger.info(f"Supabase insert successful: {insert_resp.data}")
+    except Exception as db_err:
+        logger.error(f"Supabase operation encountered an error ({db_err}). Proceeding as video is already safely uploaded.")
 
 
 def main():
