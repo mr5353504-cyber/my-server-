@@ -2,16 +2,29 @@ name: Automated Media Processing Pipeline
 
 on:
   repository_dispatch:
-    types: [process_video]
+    types: [process_video, sync_supabase]
   workflow_dispatch:
     inputs:
+      action_type:
+        description: 'Action Type (process_video or sync_supabase)'
+        required: false
+        default: 'process_video'
+        type: string
       tmdb_id:
         description: 'TMDb Movie/Show ID (e.g. 157336)'
         required: true
         type: string
       source_url:
         description: 'Direct Source Video URL, Embed Link, or HLS .m3u8'
-        required: true
+        required: false
+        type: string
+      stream_url:
+        description: 'Stream URL for Supabase sync'
+        required: false
+        type: string
+      download_url:
+        description: 'Download URL for Supabase sync'
+        required: false
         type: string
 
 jobs:
@@ -46,6 +59,7 @@ jobs:
 
       - name: Execute Media Processing Engine
         env:
+          ACTION_TYPE: ${{ github.event.action || github.event.inputs.action_type || 'process_video' }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -55,5 +69,7 @@ jobs:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           TMDB_ID: ${{ github.event.client_payload.tmdb_id || github.event.inputs.tmdb_id }}
           SOURCE_URL: ${{ github.event.client_payload.source_url || github.event.inputs.source_url }}
+          STREAM_URL: ${{ github.event.client_payload.stream_url || github.event.inputs.stream_url }}
+          DOWNLOAD_URL: ${{ github.event.client_payload.download_url || github.event.inputs.download_url }}
         run: |
           python process.py
