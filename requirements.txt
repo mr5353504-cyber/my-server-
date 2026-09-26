@@ -1,0 +1,5 @@
+requests
+telethon
+cryptg
+supabase
+yt-dlp
