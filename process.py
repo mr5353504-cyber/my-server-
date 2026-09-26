@@ -4,26 +4,28 @@ Zero-Reencode Hyper-Speed Media Pipeline (Telegram 2GB Cloud Backup Engine)
 ==========================================================================
 Optimized for 1,000+ Movies Batch Pipeline (< 15-30s Total Pipeline Execution)
 
-1. COMPLETE REMOVAL OF SLOW FFENCODING:
-   - Permanently eliminated all CPU-heavy frame-by-frame re-encoding (no libx264, no slow presets).
-   - Zero CPU waste on free GitHub Actions runners.
-2. LIGHTNING-FAST DOWNLOAD (Aria2c 16 Threads):
+Key Features:
+1. Intelligent Cloud Redirect Resolver (Handles instantcloud.org, drive, etc.):
+   - Automatically detects HTML landing pages, meta-redirects, and <a href="..."> download links.
+   - Extracts the direct high-speed video stream URL (e.g. video-downloads.googleusercontent.com).
+2. Lightning-Fast Aria2c Download (16 Threads):
    - Multi-threaded download with 16 connections (-x16 -s16 --max-connection-per-server=16 -k1M).
-   - Local destination: /tmp/media_engine_run/input_media.mp4.
-3. STRICT 5MB FILE SIZE SAFETY CHECK:
-   - Immediately checks if downloaded media is >= 5MB.
-   - If < 5MB (dead link, dummy HTML, anti-bot response), aborts safely and gracefully without crashing.
-4. ZERO-DELAY PYTHON BINARY SPLITTING (Telegram 2GB Limit):
-   - If downloaded file <= 2000 MB: Instant stream copy (ffmpeg -c copy) in ~10 seconds.
-   - If downloaded file > 2000 MB: Pure Python binary file splitting (rb/wb buffer) into 1.9GB chunks
-     (Part 1, Part 2, etc.) in 2 to 5 seconds. 100% original quality, zero re-encoding, zero delay!
-5. PARALLEL TELETHON MTPROTO UPLOAD & SUPABASE SYNC:
-   - High-throughput parallel MTProto chunks to Telegram channel.
-   - Atomic UPSERT into Supabase table 'movies' for streaming and download endpoints.
+   - Ingests the media file directly to /tmp/media_engine_run/input_media.mp4.
+3. Strict 5MB File Size Safety Check:
+   - Validates that the downloaded file is a real media file (>= 5MB) and not a broken error page.
+4. Complete Removal of Slow FFmpeg Re-encoding:
+   - ZERO re-encoding, zero CPU waste on free GitHub Actions runners.
+   - Files <= 2000 MB: Instant direct stream copy (ffmpeg -c copy) in ~10 seconds.
+   - Files > 2000 MB: Pure Python binary file splitting (rb/wb buffer) into 1.9GB chunks (Part 1, Part 2)
+     in 2 to 5 seconds with 100% original quality.
+5. Parallel Telethon MTProto Upload & Supabase Atomic Sync:
+   - Parallel MTProto chunk transfer directly to Telegram channel.
+   - Atomic UPSERT into Supabase table 'movies'.
 """
 
 import os
 import sys
+import re
 import json
 import asyncio
 import logging
@@ -31,6 +33,8 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
+import urllib.request
+import urllib.error
 import requests
 
 try:
@@ -109,6 +113,50 @@ def load_input_parameters():
     return action_type, tmdb_id, source_url, stream_url, download_url
 
 
+def resolve_cloud_redirect_url(url: str) -> str:
+    """
+    Intelligent Cloud Redirect Resolver:
+    - Resolves intermediate landing pages (e.g. instantcloud.org, drive bypass, shorteners).
+    - Detects HTTP 301/302 redirects and parses HTML '<a href="..."' or 'Redirecting...' pages.
+    - Returns the final direct video stream URL for aria2c.
+    """
+    if not url or url.lower().strip() == "test":
+        return url
+
+    logger.info(f"Resolving cloud stream URL: {url}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "*/*"
+    }
+
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            final_url = resp.geturl()
+
+            # If redirected to a CDN / direct download URL
+            if final_url != url and any(domain in final_url for domain in ["googleusercontent.com", "storage", "cdn", "media"]):
+                logger.info(f"Resolved direct CDN URL via HTTP redirect: {final_url[:120]}...")
+                return final_url
+
+            # Inspect body for HTML redirect links (like instantcloud.org)
+            sample = resp.read(16384).decode("utf-8", errors="ignore")
+            if "<html" in sample.lower() or "redirecting" in sample.lower():
+                # Search for target URL in <a href="...">
+                m = re.search(r'href=[\"\'](https?://[^\"\']*(?:googleusercontent|download|media|storage|cdn)[^\"\']*)[\"\']', sample, re.I)
+                if not m:
+                    m = re.search(r'href=[\"\'](https?://[^\"\']+)[\"\']', sample, re.I)
+                if m:
+                    extracted = m.group(1).replace("&amp;", "&")
+                    if extracted.startswith("http") and extracted != url:
+                        logger.info(f"Extracted direct video stream URL from HTML redirect page: {extracted[:120]}...")
+                        return extracted
+    except Exception as e:
+        logger.warning(f"Cloud URL resolver notice: {e}")
+
+    return url
+
+
 def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
     """
     Lightning-Fast Download (Aria2c 16 threads):
@@ -132,9 +180,11 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
         subprocess.run(gen_cmd, check=True)
         return target_file
 
-    logger.info(f"Initiating Lightning-Fast Download via Aria2c (16 threads): {source_url}")
+    # STEP 1: Resolve intermediate cloud redirect links
+    effective_url = resolve_cloud_redirect_url(source_url)
+    logger.info(f"Initiating Lightning-Fast Download via Aria2c (16 threads): {effective_url[:120]}...")
 
-    # 1. Direct standalone aria2c download
+    # STEP 2: Direct standalone aria2c download with browser headers
     aria_cmd = [
         "aria2c",
         "-x", "16",
@@ -145,22 +195,35 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
         "--check-certificate=false",
         "--auto-file-renaming=false",
         "--allow-overwrite=true",
-        "--timeout=20",
+        "--timeout=30",
         "--max-tries=3",
+        "--header=User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "-o", "input_media.mp4",
         "-d", str(output_dir),
-        source_url
+        effective_url
     ]
 
     try:
         res = subprocess.run(aria_cmd, check=False)
-        if res.returncode == 0 and target_file.exists() and target_file.stat().st_size >= MIN_VALID_FILE_SIZE_BYTES:
-            logger.info("Aria2c direct 16-threaded download complete.")
-            return target_file
+        if res.returncode == 0 and target_file.exists():
+            # If aria2c downloaded an HTML landing page instead of video, parse it!
+            if target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:
+                content = target_file.read_bytes()[:8192].decode("utf-8", errors="ignore")
+                m = re.search(r'href=[\"\'](https?://[^\"\']+)[\"\']', content)
+                if m and m.group(1) != effective_url:
+                    nested_url = m.group(1).replace("&amp;", "&")
+                    logger.info(f"HTML redirect detected in downloaded file. Re-downloading from target: {nested_url[:120]}...")
+                    target_file.unlink(missing_ok=True)
+                    aria_cmd[-1] = nested_url
+                    subprocess.run(aria_cmd, check=False)
+
+            if target_file.exists() and target_file.stat().st_size >= MIN_VALID_FILE_SIZE_BYTES:
+                logger.info("Aria2c direct 16-threaded download complete.")
+                return target_file
     except Exception as aria_err:
         logger.warning(f"Direct Aria2c notice: {aria_err}")
 
-    # 2. yt-dlp with aria2c 16-thread downloader (for YouTube/embedded/manifest links)
+    # STEP 3: yt-dlp with aria2c 16-thread downloader (for YouTube/manifest links)
     try:
         logger.info("Engaging yt-dlp with aria2c 16-threaded downloader...")
         ytdlp_cmd = [
@@ -172,7 +235,7 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
             "--format", "bestvideo+bestaudio/best",
             "--merge-output-format", "mp4",
             "-o", str(target_file),
-            source_url
+            effective_url
         ]
         res = subprocess.run(ytdlp_cmd, check=False)
         if res.returncode == 0 and target_file.exists() and target_file.stat().st_size >= MIN_VALID_FILE_SIZE_BYTES:
@@ -181,19 +244,19 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
     except Exception as ytdlp_err:
         logger.warning(f"yt-dlp notice: {ytdlp_err}")
 
-    # 3. Direct HTTP stream chunk fallback
+    # STEP 4: Direct HTTP stream chunk fallback
     if not target_file.exists() or target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:
-        if ".m3u8" in source_url.lower():
+        if ".m3u8" in effective_url.lower():
             logger.info("Downloading HLS stream via FFmpeg copy...")
-            ffmpeg_cmd = ["ffmpeg", "-y", "-i", source_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", str(target_file)]
+            ffmpeg_cmd = ["ffmpeg", "-y", "-i", effective_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", str(target_file)]
             subprocess.run(ffmpeg_cmd, check=True)
         else:
-            logger.info("Streaming via direct multi-chunk HTTP request...")
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            with requests.get(source_url, headers=headers, stream=True, timeout=120, verify=False) as r:
+            logger.info("Streaming via direct multi-chunk HTTP request with redirect following...")
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+            with requests.get(effective_url, headers=headers, stream=True, timeout=180, allow_redirects=True, verify=False) as r:
                 r.raise_for_status()
                 with open(target_file, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                    for chunk in r.iter_content(chunk_size=16 * 1024 * 1024):
                         if chunk:
                             f.write(chunk)
 
@@ -223,7 +286,7 @@ def validate_file_size(input_file: Path) -> int:
         logger.error("[STRICT FILE SIZE SAFETY CHECK TRIGGERED - UNDER 5MB PROTECTION]")
         logger.error(f"Downloaded file size is only: {file_size_mb:.2f} MB ({file_size_bytes:,} bytes).")
         logger.error(f"Minimum required file size: 5.00 MB ({MIN_VALID_FILE_SIZE_BYTES} bytes).")
-        logger.error("Cause: The provided link is dead, a 404/anti-bot HTML page, or corrupted.")
+        logger.error("Cause: The provided link returned an HTML error page, invalid file, or dead URL.")
         logger.error("Aborting safely without running FFmpeg to prevent 'Invalid data found' crashes.")
         logger.error("=" * 70)
         sys.exit(1)
@@ -578,7 +641,7 @@ def main():
         # Step 1: TMDb metadata
         metadata = fetch_tmdb_metadata(tmdb_api_key, effective_tmdb_id)
 
-        # Step 2: Lightning-fast Aria2c 16-thread download
+        # Step 2: Lightning-fast Aria2c 16-thread download with smart URL resolver
         raw_video = download_media_lightning_fast(source_url, work_dir)
 
         # Step 2.5: Strict File Size Validation (5MB Safety Check)
