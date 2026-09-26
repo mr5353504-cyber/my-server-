@@ -5,13 +5,15 @@ Media Engine Control Dashboard & API Server (app.py)
 Optimized for 1,000+ Movies Batch Pipeline (< 30-60s Execution Time)
 
 Features:
-1. Zero-Delay & High-Speed Aria2c Download Engine (16 threads).
-2. Strict File Size Validation (5MB Safety Check) to prevent crashes.
-3. Instant Stream Copy Bypass for files <= 2.2GB (10-15s execution, 100% original quality).
-4. Hyper-Fast Optimized Compression for files > 2.2GB (libx264 ultrafast CRF 32, finishing under 60s).
-5. Session State & Refresh Persistence (preserves ongoing pipeline state upon browser reload).
-6. Live Abort / Cancel Pipeline Feature (instantly stops local execution and cancels GitHub Actions runner).
-7. GitHub Actions 'History' Section (fetches last 5 runs with status, conclusion, and timestamp).
+1. Zero-Dependency Workflow Bridge: Direct pipeline dispatch & execution.
+2. Lightning-Fast Aria2c Download Engine (16 threads).
+3. Strict File Size Validation (5MB Safety Check) preventing FFmpeg crashes.
+4. Strict 2GB Telegram Limit & Bypass Logic:
+   - Files <= 2GB (2000 MB): Instant stream copy (10-15s, 100% original quality).
+   - Files > 2GB (2000 MB): Hyper-fast compression (libx264 ultrafast CRF 32, under 60s).
+5. Web Session State & Refresh Persistence: Preserves ongoing pipeline state upon browser reload.
+6. Live Abort / Cancel Feature: Instantly terminates local tasks and triggers GitHub Actions API cancellation.
+7. GitHub Actions 'History' Section: Cleanly displays the last 5 executed jobs with status and timestamp.
 
 Usage:
   - Web dashboard:   python app.py --serve --port 8080
@@ -210,7 +212,7 @@ HTML_DASHBOARD = """<!doctype html>
           </label>
           <input type="text" id="sourceUrl" placeholder="Enter direct MP4, embed URL, HLS .m3u8, or 'test'" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
           <div class="flex items-center justify-between text-[11px] text-slate-400 mt-2">
-            <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2.2GB (10-15s)</span>
+            <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2GB (2000 MB)</span>
             <span>Type <code>test</code> for instant self-test</span>
           </div>
         </div>
@@ -290,7 +292,7 @@ HTML_DASHBOARD = """<!doctype html>
     const PIPELINE_STEPS = [
       { id: 1, title: 'URL Inspection & Protocol Validation', desc: 'Validating stream viability and headers' },
       { id: 2, title: 'High-Speed Aria2c Download (16 Threads)', desc: 'Multi-threaded cloud ingest with <5MB auto-abort protection' },
-      { id: 3, title: 'Smart Stream Copy or Hyper-Fast Compression', desc: 'Copy if <= 2.2GB (10-15s) or Hyper-Fast libx264 if > 2.2GB' },
+      { id: 3, title: 'Strict 2GB Limit & Smart Bypass', desc: 'Copy if <= 2GB (2000 MB, 10-15s) or Hyper-Fast libx264 if > 2GB' },
       { id: 4, title: 'Telegram Cloud Backup Upload', desc: 'Parallel MTProto chunk transfer to Telegram channel' },
       { id: 5, title: 'Stream & Download Link Generation', desc: 'Direct playback and download URLs ready' }
     ];

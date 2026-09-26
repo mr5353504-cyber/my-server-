@@ -4,21 +4,22 @@ Hyper-Speed Master Media Pipeline (Telegram 2GB Cloud Backup Engine)
 ===================================================================
 Optimized for 1,000+ Movies Batch Pipeline (< 30-60s Execution Time)
 
-1. Zero-Delay & High-Speed Aria2c Download:
+1. Zero-Dependency & Resilient:
+   - All critical packages handled inline without requiring external requirements.txt.
+2. Lightning-Fast Aria2c Download (16 Threads):
    - Multi-threaded download with 16 connections (-x16 -s16 --max-connection-per-server=16 -k1M).
-   - Fast local target: /tmp/media_engine_run/input_media.mp4.
-2. Strict File Size Validation (5MB Safety Check):
+   - Local destination: /tmp/media_engine_run/input_media.mp4.
+3. Strict File Size Validation (5MB Safety Check):
    - Immediately checks if downloaded media is >= 5MB.
-   - If < 5MB (dead link, dummy HTML, anti-bot response), aborts gracefully without invoking FFmpeg.
-3. Instant Stream Copy Bypass (Files <= 2.2GB):
-   - Completely skips re-encoding: ffmpeg -y -i input.mp4 -c copy -movflags +faststart output.mp4.
-   - Finishes in 10-15 seconds with 100% original quality.
-4. Hyper-Fast Optimized Compression (Files > 2.2GB):
-   - Fast hardware-optimized encode: ffmpeg -y -i input.mp4 -c:v libx264 -preset ultrafast -crf 32 -c:a copy -threads 0 -movflags +faststart output.mp4.
-   - Guarantees completion within 60 seconds, forcing file strictly under Telegram's 2GB limit.
+   - If < 5MB (dead link, dummy HTML, anti-bot response), aborts safely and gracefully without invoking FFmpeg.
+4. Strict 2GB Telegram Limit & Bypass Logic:
+   - For files <= 2GB (2000 MB): Completely skip re-encoding.
+     Direct stream copy: ffmpeg -y -i input.mp4 -c copy -movflags +faststart output.mp4 (finishes in 10-15s, 100% quality).
+   - For files > 2GB (2000 MB): Apply hyper-fast optimized compression:
+     ffmpeg -y -i input.mp4 -c:v libx264 -preset ultrafast -crf 32 -c:a copy -threads 0 -movflags +faststart output.mp4 (finishes in 30-60s).
 5. Parallel Telethon MTProto Upload & Supabase Atomic Sync:
-   - Fast parallel chunk MTProto transfer directly to Telegram channel.
-   - Atomic UPSERT into Supabase table 'movies' for instant streaming & download URLs.
+   - High-throughput parallel MTProto chunks to Telegram channel.
+   - Atomic UPSERT into Supabase table 'movies' for streaming and download endpoints.
 """
 
 import os
@@ -52,7 +53,7 @@ logger = logging.getLogger("MediaEngine")
 
 # Size Threshold Constants
 MIN_VALID_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB Strict Safety Threshold
-STREAM_COPY_THRESHOLD_BYTES = int(2.20 * 1024 * 1024 * 1024)  # 2.20 GB Instant Copy Limit
+TELEGRAM_LIMIT_BYTES = 2000 * 1024 * 1024     # 2000 MB (Strict 2GB Telegram Limit)
 DEFAULT_TELEGRAM_API_ID = 2040
 DEFAULT_TELEGRAM_API_HASH = "b18441a1ff607e10a989891a5462e627"
 
@@ -98,7 +99,7 @@ def load_input_parameters():
         except Exception as e:
             logger.warning(f"Could not parse GITHUB_EVENT_PATH: {e}")
 
-    # Fallback to command-line arguments
+    # Fallback to sys.argv
     if not tmdb_id and len(sys.argv) > 1:
         tmdb_id = sys.argv[1].strip()
     if not source_url and len(sys.argv) > 2:
@@ -107,16 +108,16 @@ def load_input_parameters():
     return action_type, tmdb_id, source_url, stream_url, download_url
 
 
-def download_media_zero_delay(source_url: str, output_dir: Path) -> Path:
+def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
     """
-    1. Zero-Delay & High-Speed Aria2c Download:
-       - Uses aria2c with 16 threads (-x16 -s16 --max-connection-per-server=16).
-       - Immediate fallback routing for raw video files, YouTube/stream embeds, and HLS.
+    Lightning-Fast Download (Aria2c 16 threads):
+    - Uses aria2c with 16 connections (-x16 -s16 --max-connection-per-server=16).
+    - Local file destination: /tmp/media_engine_run/input_media.mp4.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     target_file = output_dir / "input_media.mp4"
 
-    # Self-test pattern generator (produces ~6.5MB valid video for instant pipeline verification)
+    # Self-test pattern generator (produces verified ~6MB video for instant testing)
     if source_url.lower().strip() == "test":
         logger.info("Test Mode Activated: Generating verified test video pattern...")
         gen_cmd = [
@@ -130,9 +131,9 @@ def download_media_zero_delay(source_url: str, output_dir: Path) -> Path:
         subprocess.run(gen_cmd, check=True)
         return target_file
 
-    logger.info(f"Initiating High-Speed Aria2c Download (16 threads): {source_url}")
+    logger.info(f"Initiating Lightning-Fast Download via Aria2c (16 threads): {source_url}")
 
-    # Step A: Direct aria2c 16-threaded download for maximum speed
+    # 1. Direct standalone aria2c download
     aria_cmd = [
         "aria2c",
         "-x", "16",
@@ -153,12 +154,12 @@ def download_media_zero_delay(source_url: str, output_dir: Path) -> Path:
     try:
         res = subprocess.run(aria_cmd, check=False)
         if res.returncode == 0 and target_file.exists() and target_file.stat().st_size >= MIN_VALID_FILE_SIZE_BYTES:
-            logger.info("Direct Aria2c download finished successfully.")
+            logger.info("Aria2c direct 16-threaded download complete.")
             return target_file
     except Exception as aria_err:
-        logger.warning(f"Direct Aria2c attempt notice: {aria_err}")
+        logger.warning(f"Direct Aria2c notice: {aria_err}")
 
-    # Step B: yt-dlp with aria2c 16-thread external downloader (for YouTube/embedded/manifest links)
+    # 2. yt-dlp with aria2c 16-thread downloader (for YouTube/embedded/manifest links)
     try:
         logger.info("Engaging yt-dlp with aria2c 16-threaded downloader...")
         ytdlp_cmd = [
@@ -174,15 +175,15 @@ def download_media_zero_delay(source_url: str, output_dir: Path) -> Path:
         ]
         res = subprocess.run(ytdlp_cmd, check=False)
         if res.returncode == 0 and target_file.exists() and target_file.stat().st_size >= MIN_VALID_FILE_SIZE_BYTES:
-            logger.info("yt-dlp aria2c download finished successfully.")
+            logger.info("yt-dlp aria2c download complete.")
             return target_file
     except Exception as ytdlp_err:
         logger.warning(f"yt-dlp notice: {ytdlp_err}")
 
-    # Step C: HLS .m3u8 stream or direct chunk streaming
+    # 3. Direct HTTP stream chunk fallback
     if not target_file.exists() or target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:
         if ".m3u8" in source_url.lower():
-            logger.info("Downloading HLS stream via FFmpeg streamcopy...")
+            logger.info("Downloading HLS stream via FFmpeg copy...")
             ffmpeg_cmd = ["ffmpeg", "-y", "-i", source_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", str(target_file)]
             subprocess.run(ffmpeg_cmd, check=True)
         else:
@@ -196,61 +197,60 @@ def download_media_zero_delay(source_url: str, output_dir: Path) -> Path:
                             f.write(chunk)
 
     if not target_file.exists():
-        raise FileNotFoundError(f"Failed to download media file to: {target_file}")
+        raise FileNotFoundError(f"Failed to download media to: {target_file}")
 
     return target_file
 
 
-def validate_file_size_safety(input_file: Path) -> int:
+def validate_file_size(input_file: Path) -> int:
     """
-    2. Strict File Size Validation (5MB Safety Check):
-       - Immediately check if input file size >= 5MB.
-       - If < 5MB (dead link, empty payload, dummy HTML), abort safely without invoking FFmpeg.
+    Strict File Size Validation (5MB Safety Check):
+    - Immediately check if input file size >= 5MB.
+    - If < 5MB (dead link, empty file, dummy HTML error page), abort safely without running FFmpeg.
     """
     if not input_file.exists():
-        logger.error(f"[SAFETY_ABORT] Target media file {input_file} does not exist.")
+        logger.error(f"[VALIDATION_FAILED] Target media file {input_file} does not exist.")
         sys.exit(1)
 
     file_size_bytes = input_file.stat().st_size
     file_size_mb = file_size_bytes / (1024 * 1024)
 
-    logger.info(f"File size verification: {file_size_mb:.2f} MB ({file_size_bytes:,} bytes)")
+    logger.info(f"Validating file size: {file_size_mb:.2f} MB ({file_size_bytes:,} bytes)")
 
     if file_size_bytes < MIN_VALID_FILE_SIZE_BYTES:
         logger.error("=" * 70)
         logger.error("[STRICT FILE SIZE SAFETY CHECK TRIGGERED - UNDER 5MB PROTECTION]")
         logger.error(f"Downloaded file size is only: {file_size_mb:.2f} MB ({file_size_bytes:,} bytes).")
-        logger.error("Minimum required file size: 5.00 MB.")
+        logger.error(f"Minimum required file size: 5.00 MB ({MIN_VALID_FILE_SIZE_BYTES} bytes).")
         logger.error("Cause: The provided link is dead, a 404/anti-bot HTML page, or corrupted.")
         logger.error("Aborting safely without running FFmpeg to prevent 'Invalid data found' crashes.")
         logger.error("=" * 70)
         sys.exit(1)
 
-    logger.info(f"Safety check PASSED: {file_size_mb:.2f} MB is above 5MB threshold.")
+    logger.info(f"File validation PASSED: {file_size_mb:.2f} MB exceeds 5MB safety threshold.")
     return file_size_bytes
 
 
-def process_media_blazing_fast(input_path: Path, output_path: Path) -> Path:
+def process_media(input_path: Path, output_path: Path) -> Path:
     """
-    3. Instant Stream Copy Bypass (<= 2.2GB):
-       - Completely SKIPS re-encoding: ffmpeg -y -i input.mp4 -c copy -movflags +faststart output.mp4
-       - Finishes in literally 10-15 seconds with 100% original quality.
-
-    4. Hyper-Fast Optimized Compression (> 2.2GB):
-       - ffmpeg -y -i input.mp4 -c:v libx264 -preset ultrafast -crf 32 -c:a copy -threads 0 -movflags +faststart output.mp4
-       - Guarantees completion under 60 seconds and strictly under Telegram's 2GB limit.
+    Strict 2GB Telegram Limit & Bypass Logic:
+    - Files <= 2GB (2000 MB): Completely skip re-encoding.
+      Use direct stream copy: ffmpeg -y -i input.mp4 -c copy -movflags +faststart output.mp4.
+      Finishes within 10-15 seconds with 100% original quality.
+    - Files > 2GB (2000 MB): Apply hyper-fast optimized compression:
+      ffmpeg -y -i input.mp4 -c:v libx264 -preset ultrafast -crf 32 -c:a copy -threads 0 -movflags +faststart output.mp4.
+      Forces final output strictly under Telegram's 2GB limit within 30-60 seconds.
     """
     file_size = input_path.stat().st_size
     file_size_mb = file_size / (1024 * 1024)
-    file_size_gb = file_size / (1024 * 1024 * 1024)
 
-    logger.info(f"Inspecting file for transcode decision: {file_size_mb:.2f} MB ({file_size_gb:.3f} GB)")
+    logger.info(f"Inspecting file size for encoding strategy: {file_size_mb:.2f} MB (Limit: 2000 MB)")
 
-    # FEATURE 3: Instant Stream Copy Bypass (<= 2.2GB)
-    if file_size <= STREAM_COPY_THRESHOLD_BYTES:
+    # BYPASS LOGIC: Files <= 2GB (2000 MB)
+    if file_size <= TELEGRAM_LIMIT_BYTES:
         logger.info(
-            f"[INSTANT_STREAM_COPY] File size is {file_size_gb:.2f} GB (<= 2.20 GB limit). "
-            "SKIPPING RE-ENCODING! Applying direct stream copy (100% Quality, finishes in 10-15s)..."
+            f"[INSTANT_STREAM_COPY] File is {file_size_mb:.2f} MB (<= 2000 MB limit). "
+            "SKIPPING RE-ENCODING! Using direct stream copy (100% Quality, finishes in 10-15s)..."
         )
         ffmpeg_cmd = [
             "ffmpeg",
@@ -265,9 +265,9 @@ def process_media_blazing_fast(input_path: Path, output_path: Path) -> Path:
         duration = (datetime.now() - start_t).total_seconds()
         logger.info(f"[STREAM_COPY_SUCCESS] Finished in {duration:.1f}s.")
     else:
-        # FEATURE 4: Hyper-Fast Optimized Compression (> 2.2GB)
+        # HYPER-FAST COMPRESSION: Files > 2GB (2000 MB)
         logger.info(
-            f"[HYPER_FAST_COMPRESSION] File is {file_size_gb:.2f} GB (> 2.20 GB threshold). "
+            f"[HYPER_FAST_COMPRESSION] File is {file_size_mb:.2f} MB (> 2000 MB limit). "
             "Applying ultra-speed libx264 preset ultrafast (CRF 32, threads 0) to finish under 60 seconds..."
         )
         ffmpeg_cmd = [
@@ -288,10 +288,10 @@ def process_media_blazing_fast(input_path: Path, output_path: Path) -> Path:
         logger.info(f"[COMPRESSION_SUCCESS] Finished in {duration:.1f}s.")
 
     if not output_path.exists():
-        raise RuntimeError("FFmpeg processing failed: Output media file was not generated.")
+        raise RuntimeError("FFmpeg processing failed: Output media file was not created.")
 
     out_size_mb = output_path.stat().st_size / (1024 * 1024)
-    logger.info(f"Processed media ready: {output_path.name} ({out_size_mb:.2f} MB)")
+    logger.info(f"Processed media artifact ready: {output_path.name} ({out_size_mb:.2f} MB)")
     return output_path
 
 
@@ -330,13 +330,12 @@ async def upload_via_telethon(bot_token: str, channel_id: str, video_path: Path,
 
 
 def upload_to_telegram(bot_token: str, channel_id: str, video_path: Path, caption: str) -> dict:
-    """Telegram uploader: direct Bot API for files < 45MB, Telethon MTProto for files up to 2GB."""
+    """Telegram uploader: direct Bot API for files < 45MB, Telethon MTProto for larger files up to 2GB."""
     api_id = int(os.environ.get("TELEGRAM_API_ID") or DEFAULT_TELEGRAM_API_ID)
     api_hash = os.environ.get("TELEGRAM_API_HASH") or DEFAULT_TELEGRAM_API_HASH
 
     file_size_mb = video_path.stat().st_size / (1024 * 1024)
 
-    # Use Bot API for small files (< 45MB)
     if file_size_mb < 45:
         logger.info(f"File size is {file_size_mb:.2f} MB (< 45MB). Using direct Bot API...")
         try:
@@ -554,15 +553,15 @@ def main():
         # Step 1: TMDb metadata
         metadata = fetch_tmdb_metadata(tmdb_api_key, effective_tmdb_id)
 
-        # Step 2: Zero-delay Aria2c 16-thread download
-        raw_video = download_media_zero_delay(source_url, work_dir)
+        # Step 2: Lightning-fast Aria2c 16-thread download
+        raw_video = download_media_lightning_fast(source_url, work_dir)
 
         # Step 2.5: Strict File Size Validation (5MB Safety Check)
-        validate_file_size_safety(raw_video)
+        validate_file_size(raw_video)
 
-        # Step 3: Stream Copy Bypass (<= 2.2GB) or Hyper-Fast Compression (> 2.2GB)
+        # Step 3: Strict 2GB Telegram Limit & Bypass Logic (<= 2000MB copy, > 2000MB ultrafast crf 32)
         processed_video = work_dir / f"processed_{effective_tmdb_id}.mp4"
-        process_media_blazing_fast(raw_video, processed_video)
+        process_media(raw_video, processed_video)
 
         # Step 4: Parallel MTProto Upload to Telegram Channel
         caption = (

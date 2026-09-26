@@ -41,9 +41,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
-      - name: Install System Dependencies (FFmpeg & aria2c)
+      - name: Install System Dependencies (ffmpeg & aria2)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg aria2
@@ -53,10 +52,10 @@ jobs:
           ffmpeg -version | head -n 1
           aria2c --version | head -n 1
 
-      - name: Install Python Packages (Telethon MTProto, yt-dlp, cryptg, Supabase)
+      - name: Install Python Packages (Zero-Dependency Inline Installation)
         run: |
           python -m pip install --upgrade pip
-          pip install yt-dlp requests telethon cryptg supabase
+          pip install requests telethon cryptg supabase yt-dlp
 
       - name: Execute Media Processing Engine
         env:
