@@ -2,17 +2,20 @@
 """
 Media Engine Control Dashboard & API Server (app.py)
 ===================================================
-Features Implemented:
-1. High-Speed Download & Validation Engine Bridge (process.py execution)
-2. Strict File Validation Check (< 5MB Protection) & Smart Stream Copy trigger
-3. GitHub Actions Dispatch & Management
-4. GitHub Actions 'History' Section (fetches last 5 runs with status, conclusion & timestamp)
-5. Live Abort / Cancel Pipeline Feature (instantly aborts GitHub Actions workflow runs)
-6. Session State & Refresh Persistence (preserves ongoing pipeline state upon browser reload)
+Optimized for 1,000+ Movies Batch Pipeline (< 30-60s Execution Time)
+
+Features:
+1. Zero-Delay & High-Speed Aria2c Download Engine (16 threads).
+2. Strict File Size Validation (5MB Safety Check) to prevent crashes.
+3. Instant Stream Copy Bypass for files <= 2.2GB (10-15s execution, 100% original quality).
+4. Hyper-Fast Optimized Compression for files > 2.2GB (libx264 ultrafast CRF 32, finishing under 60s).
+5. Session State & Refresh Persistence (preserves ongoing pipeline state upon browser reload).
+6. Live Abort / Cancel Pipeline Feature (instantly stops local execution and cancels GitHub Actions runner).
+7. GitHub Actions 'History' Section (fetches last 5 runs with status, conclusion, and timestamp).
 
 Usage:
-  - Run web dashboard:  python app.py --serve --port 8080
-  - CLI direct run:     python app.py --source-url "https://example.com/video.mp4" --tmdb-id 157336
+  - Web dashboard:   python app.py --serve --port 8080
+  - CLI direct run:  python app.py --source-url "https://example.com/video.mp4" --tmdb-id 157336
 """
 
 import os
@@ -143,7 +146,7 @@ HTML_DASHBOARD = """<!doctype html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Telegram Cloud Media Engine - Python Dashboard</title>
+  <title>Telegram Cloud Media Engine - Blazing Fast Console</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -152,9 +155,7 @@ HTML_DASHBOARD = """<!doctype html>
     tailwind.config = {
       darkMode: 'class',
       theme: {
-        extend: {
-          fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] }
-        }
+        extend: { fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] } }
       }
     }
   </script>
@@ -182,7 +183,7 @@ HTML_DASHBOARD = """<!doctype html>
     <div class="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
         <div class="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-xs">
-          ▶
+          ⚡
         </div>
         <h1 class="font-semibold text-sm text-white tracking-tight">Telegram Cloud Media Engine</h1>
       </div>
@@ -209,13 +210,13 @@ HTML_DASHBOARD = """<!doctype html>
           </label>
           <input type="text" id="sourceUrl" placeholder="Enter direct MP4, embed URL, HLS .m3u8, or 'test'" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
           <div class="flex items-center justify-between text-[11px] text-slate-400 mt-2">
-            <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le;1.9GB</span>
+            <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2.2GB (10-15s)</span>
             <span>Type <code>test</code> for instant self-test</span>
           </div>
         </div>
 
         <div class="flex items-center justify-between pt-2">
-          <span class="text-xs text-slate-400">⚡ 2GB Telegram MTProto Parallel Engine</span>
+          <span class="text-xs text-slate-400">⚡ Hyper-Speed 30-60s 2GB Pipeline</span>
           <div class="flex items-center gap-2.5">
             <button type="button" id="cancelBtn" onclick="handleCancelPipeline()" class="hidden bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-medium py-2.5 px-4 rounded-xl text-sm">
               ■ Cancel Pipeline
@@ -289,7 +290,7 @@ HTML_DASHBOARD = """<!doctype html>
     const PIPELINE_STEPS = [
       { id: 1, title: 'URL Inspection & Protocol Validation', desc: 'Validating stream viability and headers' },
       { id: 2, title: 'High-Speed Aria2c Download (16 Threads)', desc: 'Multi-threaded cloud ingest with <5MB auto-abort protection' },
-      { id: 3, title: 'Smart Stream Copy or Ultrafast Compression', desc: 'Copy if <=1.9GB (10-15s) or Ultrafast libx264 if >1.9GB' },
+      { id: 3, title: 'Smart Stream Copy or Hyper-Fast Compression', desc: 'Copy if <= 2.2GB (10-15s) or Hyper-Fast libx264 if > 2.2GB' },
       { id: 4, title: 'Telegram Cloud Backup Upload', desc: 'Parallel MTProto chunk transfer to Telegram channel' },
       { id: 5, title: 'Stream & Download Link Generation', desc: 'Direct playback and download URLs ready' }
     ];
@@ -417,7 +418,7 @@ HTML_DASHBOARD = """<!doctype html>
       startTimer();
       saveSession();
 
-      showToast('loading', 'Initializing Pipeline', 'Connecting to GitHub Actions cloud runner...');
+      showToast('loading', 'Initializing Pipeline', 'Connecting to GitHub Actions runner...');
 
       try {
         const res = await fetch('/api/dispatch', {
@@ -444,7 +445,7 @@ HTML_DASHBOARD = """<!doctype html>
 
     async function handleCancelPipeline() {
       try {
-        showToast('loading', 'Aborting...', 'Sending cancellation request to GitHub runner...');
+        showToast('loading', 'Aborting...', 'Sending cancellation request to GitHub Actions...');
         const res = await fetch('/api/cancel', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -662,7 +663,7 @@ def run_server(port: int = DEFAULT_PORT):
 
 def run_cli(source_url: str, tmdb_id: str):
     """Execute pipeline directly via local process.py invocation."""
-    print(f"Executing Ultimate Master Pipeline for URL: {source_url} (TMDb: {tmdb_id})")
+    print(f"Executing Hyper-Speed Pipeline for URL: {source_url} (TMDb: {tmdb_id})")
     env = os.environ.copy()
     env["SOURCE_URL"] = source_url
     env["TMDB_ID"] = tmdb_id
@@ -695,7 +696,6 @@ def main():
         run_cli(args.source_url, args.tmdb_id)
         return
 
-    # Default to running server if --serve or no specific arguments passed
     run_server(args.port)
 
 

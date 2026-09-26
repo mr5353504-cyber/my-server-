@@ -29,7 +29,7 @@ on:
 
 jobs:
   process-and-ingest:
-    name: Transcode & Ingest Media (MTProto 2GB)
+    name: Transcode & Ingest Media (Hyper-Speed MTProto 2GB)
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -41,6 +41,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
       - name: Install System Dependencies (FFmpeg & aria2c)
         run: |
