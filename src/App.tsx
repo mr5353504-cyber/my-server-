@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Film,
   Link as LinkIcon,
@@ -18,7 +18,13 @@ import {
   CloudLightning,
   Send,
   Zap,
-  Server
+  Server,
+  History as HistoryIcon,
+  RefreshCw,
+  RotateCcw,
+  ShieldAlert,
+  Calendar,
+  Layers
 } from 'lucide-react';
 import { APP_CONFIG } from './config';
 
@@ -40,8 +46,56 @@ interface ToastState {
   actionUrl?: string;
 }
 
+interface WorkflowRunItem {
+  id: number;
+  name: string;
+  run_number: number;
+  event: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+  display_title: string;
+}
+
+const SESSION_STORAGE_KEY = 'media_engine_pipeline_session_v3';
+
+const INITIAL_STEPS: PipelineStep[] = [
+  {
+    id: 1,
+    title: 'URL Inspection & Protocol Validation',
+    description: 'Analyzing source link, video headers, and stream viability',
+    status: 'pending'
+  },
+  {
+    id: 2,
+    title: 'High-Speed Aria2c Download (16 Threads)',
+    description: 'Multi-threaded cloud ingest to fetch complete media file (with <5MB protection)',
+    status: 'pending'
+  },
+  {
+    id: 3,
+    title: 'Smart Stream Copy or Compression',
+    description: 'Direct stream copy if <=1.9GB (10-15s), or Ultrafast libx264 if >1.9GB',
+    status: 'pending'
+  },
+  {
+    id: 4,
+    title: 'Telegram Cloud Backup Upload',
+    description: 'Parallel MTProto transfer directly to your Telegram channel',
+    status: 'pending'
+  },
+  {
+    id: 5,
+    title: 'Stream & Download Link Generation',
+    description: 'Generating instant web playback and direct download endpoints',
+    status: 'pending'
+  }
+];
+
 export default function App() {
-  // Input URL
+  // Input parameters
   const [sourceUrl, setSourceUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -51,40 +105,10 @@ export default function App() {
   const [activeRunUrl, setActiveRunUrl] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isPipelineActive, setIsPipelineActive] = useState(false);
+  const [startedAtTimestamp, setStartedAtTimestamp] = useState<number | null>(null);
 
   // 5 Step Interactive Pipeline States
-  const [steps, setSteps] = useState<PipelineStep[]>([
-    {
-      id: 1,
-      title: 'URL Inspection & Protocol Validation',
-      description: 'Analyzing source link, video headers, and stream viability',
-      status: 'pending'
-    },
-    {
-      id: 2,
-      title: 'High-Speed Aria2c Download (16 Threads)',
-      description: 'Multi-threaded cloud ingest to fetch complete media file',
-      status: 'pending'
-    },
-    {
-      id: 3,
-      title: 'Smart Stream Copy or Compression',
-      description: 'Direct stream copy if <=1.9GB (10-15s), or Ultrafast if >1.9GB',
-      status: 'pending'
-    },
-    {
-      id: 4,
-      title: 'Telegram Cloud Backup Upload',
-      description: 'Parallel MTProto transfer directly to your Telegram channel',
-      status: 'pending'
-    },
-    {
-      id: 5,
-      title: 'Stream & Download Link Generation',
-      description: 'Generating instant web playback and direct download endpoints',
-      status: 'pending'
-    }
-  ]);
+  const [steps, setSteps] = useState<PipelineStep[]>(INITIAL_STEPS);
 
   // Generated final links
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
@@ -96,7 +120,12 @@ export default function App() {
   const [supabaseStatus, setSupabaseStatus] = useState<StepStatus>('pending');
   const [supabaseMessage, setSupabaseMessage] = useState<string | null>(null);
 
-  // Timers
+  // History State
+  const [historyRuns, setHistoryRuns] = useState<WorkflowRunItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  // Timers & Polling
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -108,21 +137,14 @@ export default function App() {
     message: ''
   });
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
-
-  const showToast = (type: 'loading' | 'success' | 'error', title: string, message: string, actionUrl?: string) => {
+  const showToast = useCallback((type: 'loading' | 'success' | 'error', title: string, message: string, actionUrl?: string) => {
     setToast({ show: true, type, title, message, actionUrl });
     if (type !== 'loading') {
       setTimeout(() => {
         setToast((prev) => (prev.title === title ? { ...prev, show: false } : prev));
       }, 7000);
     }
-  };
+  }, []);
 
   const copyToClipboard = (text: string, field: 'stream' | 'download') => {
     navigator.clipboard.writeText(text);
@@ -130,13 +152,42 @@ export default function App() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const updateStepStatus = (stepId: number, status: StepStatus, errorMessage?: string) => {
+  const updateStepStatus = useCallback((stepId: number, status: StepStatus, errorMessage?: string) => {
     setSteps((prev) =>
       prev.map((step) =>
         step.id === stepId ? { ...step, status, errorMessage } : step
       )
     );
-  };
+  }, []);
+
+  // Fetch GitHub Actions History (Last 5 Executions)
+  const fetchHistory = useCallback(async () => {
+    setIsLoadingHistory(true);
+    setHistoryError(null);
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs?per_page=5`,
+        {
+          headers: {
+            Accept: 'application/vnd.github.v3+json',
+            Authorization: `Bearer ${APP_CONFIG.GITHUB_PAT}`
+          }
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error(`GitHub API HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      setHistoryRuns(data.workflow_runs || []);
+    } catch (err: any) {
+      console.error('History fetch error:', err);
+      setHistoryError(err.message || 'Unable to load run history');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, []);
 
   // Dispatch GitHub Action
   const dispatchWorkflow = async (eventType: string, payload: Record<string, any>) => {
@@ -149,8 +200,8 @@ export default function App() {
       {
         method: 'POST',
         headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -173,7 +224,7 @@ export default function App() {
   };
 
   // Real-time polling of GitHub Actions run & steps
-  const startRealtimePolling = () => {
+  const startRealtimePolling = useCallback((targetRunId?: number | null) => {
     if (pollRef.current) clearInterval(pollRef.current);
 
     let attempts = 0;
@@ -181,31 +232,37 @@ export default function App() {
       attempts++;
       try {
         const runsRes = await fetch(
-          `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs?per_page=3`,
+          `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs?per_page=5`,
           {
             headers: {
-              'Accept': 'application/vnd.github.v3+json',
-              'Authorization': `Bearer ${APP_CONFIG.GITHUB_PAT}`
+              Accept: 'application/vnd.github.v3+json',
+              Authorization: `Bearer ${APP_CONFIG.GITHUB_PAT}`
             }
           }
         );
 
         if (!runsRes.ok) return;
         const runsData = await runsRes.json();
-        const latestRun = (runsData.workflow_runs || [])[0];
+        const runsList = runsData.workflow_runs || [];
 
-        if (!latestRun) return;
+        // If targetRunId is known, match it; otherwise take latest
+        let currentRun = targetRunId ? runsList.find((r: any) => r.id === targetRunId) : runsList[0];
+        if (!currentRun && runsList.length > 0) {
+          currentRun = runsList[0];
+        }
 
-        setActiveRunId(latestRun.id);
-        setActiveRunUrl(latestRun.html_url);
+        if (!currentRun) return;
 
-        // Fetch jobs for latest run to inspect individual steps
+        setActiveRunId(currentRun.id);
+        setActiveRunUrl(currentRun.html_url);
+
+        // Fetch jobs for current run to inspect individual steps
         const jobsRes = await fetch(
-          `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs/${latestRun.id}/jobs`,
+          `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs/${currentRun.id}/jobs`,
           {
             headers: {
-              'Accept': 'application/vnd.github.v3+json',
-              'Authorization': `Bearer ${APP_CONFIG.GITHUB_PAT}`
+              Accept: 'application/vnd.github.v3+json',
+              Authorization: `Bearer ${APP_CONFIG.GITHUB_PAT}`
             }
           }
         );
@@ -218,7 +275,7 @@ export default function App() {
           const jobStatus = primaryJob.status;
           const jobConclusion = primaryJob.conclusion;
 
-          // Steps inspection
+          // Step inspections
           const execStep = primaryJob.steps.find((s: any) =>
             s.name.includes('Execute Media Processing Engine')
           );
@@ -260,15 +317,18 @@ export default function App() {
                   'success',
                   'Processing Completed',
                   'Video uploaded to Telegram channel. Streaming and download links are ready.',
-                  latestRun.html_url
+                  currentRun.html_url
                 );
+
+                fetchHistory();
               } else if (execStep.conclusion === 'cancelled') {
-                updateStepStatus(3, 'failed', 'Pipeline was cancelled by user.');
+                updateStepStatus(3, 'failed', 'Pipeline was aborted by user.');
                 setIsPipelineActive(false);
                 if (timerRef.current) clearInterval(timerRef.current);
                 if (pollRef.current) clearInterval(pollRef.current);
+                fetchHistory();
               } else {
-                updateStepStatus(3, 'failed', 'Processing error on cloud runner. Check terminal logs.');
+                updateStepStatus(3, 'failed', 'Processing halted. Check runner terminal (e.g. file <5MB or dead link).');
                 setIsPipelineActive(false);
                 if (timerRef.current) clearInterval(timerRef.current);
                 if (pollRef.current) clearInterval(pollRef.current);
@@ -276,9 +336,10 @@ export default function App() {
                 showToast(
                   'error',
                   'Processing Failed',
-                  'Cloud runner exited with an error. Review the execution logs for details.',
-                  latestRun.html_url
+                  'Cloud runner exited with error. Review execution logs.',
+                  currentRun.html_url
                 );
+                fetchHistory();
               }
             }
           }
@@ -288,60 +349,162 @@ export default function App() {
             setIsPipelineActive(false);
             if (timerRef.current) clearInterval(timerRef.current);
             if (pollRef.current) clearInterval(pollRef.current);
+            fetchHistory();
           }
         }
       } catch (err) {
         console.error('Polling error:', err);
       }
 
-      if (attempts > 360) {
+      if (attempts > 450) {
         if (pollRef.current) clearInterval(pollRef.current);
         if (timerRef.current) clearInterval(timerRef.current);
       }
     }, 4000);
 
     pollRef.current = interval;
-  };
+  }, [fetchHistory, showToast, updateStepStatus]);
 
-  // CANCEL / ABORT PIPELINE FUNCTION
+  // CANCEL / STOP PIPELINE FEATURE
   const handleCancelPipeline = async () => {
+    if (isCancelling) return;
     setIsCancelling(true);
 
     try {
       if (activeRunId) {
-        // Cancel run via GitHub Actions REST API
         await fetch(
           `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs/${activeRunId}/cancel`,
           {
             method: 'POST',
             headers: {
-              'Accept': 'application/vnd.github.v3+json',
-              'Authorization': `Bearer ${APP_CONFIG.GITHUB_PAT}`
+              Accept: 'application/vnd.github.v3+json',
+              Authorization: `Bearer ${APP_CONFIG.GITHUB_PAT}`
             }
           }
         );
       }
 
-      // Stop timers & reset status
       if (timerRef.current) clearInterval(timerRef.current);
       if (pollRef.current) clearInterval(pollRef.current);
 
       setIsPipelineActive(false);
       setIsSubmitting(false);
 
-      // Mark whichever step was active as cancelled
       setSteps((prev) =>
-        prev.map((s) => (s.status === 'active' ? { ...s, status: 'failed', errorMessage: 'Process aborted by user.' } : s))
+        prev.map((s) => (s.status === 'active' ? { ...s, status: 'failed', errorMessage: 'Pipeline cancelled by user.' } : s))
       );
 
       showToast('error', 'Pipeline Cancelled', 'The cloud runner execution was immediately stopped.');
+      setTimeout(fetchHistory, 2000);
     } catch (err: any) {
-      showToast('error', 'Cancel Request Notice', err.message || 'Runner stopped.');
+      showToast('error', 'Cancel Notice', err.message || 'Runner stopped.');
       setIsPipelineActive(false);
     } finally {
       setIsCancelling(false);
     }
   };
+
+  // Reset Session
+  const handleResetSession = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    setIsPipelineActive(false);
+    setIsSubmitting(false);
+    setActiveRunId(null);
+    setActiveRunUrl(null);
+    setElapsedSeconds(0);
+    setStartedAtTimestamp(null);
+    setStreamUrl(null);
+    setDownloadUrl(null);
+    setSteps(INITIAL_STEPS);
+    setSupabaseStatus('pending');
+    setSupabaseMessage(null);
+
+    try {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+    } catch (_) {}
+
+    showToast('success', 'Session Reset', 'Workspace has been restored to default state.');
+  };
+
+  // SESSION STATE PERSISTENCE: Save on state change
+  useEffect(() => {
+    try {
+      const stateToSave = {
+        sourceUrl,
+        tmdbIdInput,
+        activeRunId,
+        activeRunUrl,
+        elapsedSeconds,
+        isPipelineActive,
+        startedAtTimestamp,
+        steps,
+        streamUrl,
+        downloadUrl,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(stateToSave));
+    } catch (e) {
+      console.warn('Session save notice:', e);
+    }
+  }, [
+    sourceUrl,
+    tmdbIdInput,
+    activeRunId,
+    activeRunUrl,
+    elapsedSeconds,
+    isPipelineActive,
+    startedAtTimestamp,
+    steps,
+    streamUrl,
+    downloadUrl
+  ]);
+
+  // SESSION STATE PERSISTENCE: Restore on component mount
+  useEffect(() => {
+    try {
+      const savedRaw = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (savedRaw) {
+        const saved = JSON.parse(savedRaw);
+        if (saved.sourceUrl) setSourceUrl(saved.sourceUrl);
+        if (saved.tmdbIdInput) setTmdbIdInput(saved.tmdbIdInput);
+        if (saved.streamUrl) setStreamUrl(saved.streamUrl);
+        if (saved.downloadUrl) setDownloadUrl(saved.downloadUrl);
+        if (saved.steps && Array.isArray(saved.steps)) setSteps(saved.steps);
+        if (saved.activeRunId) setActiveRunId(saved.activeRunId);
+        if (saved.activeRunUrl) setActiveRunUrl(saved.activeRunUrl);
+
+        if (saved.isPipelineActive) {
+          setIsPipelineActive(true);
+          const now = Date.now();
+          const start = saved.startedAtTimestamp || saved.savedAt || now;
+          const diffSecs = Math.max(0, Math.floor((now - start) / 1000));
+          setElapsedSeconds(diffSecs);
+          setStartedAtTimestamp(start);
+
+          // Resume timer
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = setInterval(() => {
+            setElapsedSeconds((prev) => prev + 1);
+          }, 1000);
+
+          // Resume live polling
+          startRealtimePolling(saved.activeRunId);
+        }
+      }
+    } catch (e) {
+      console.warn('Session load notice:', e);
+    }
+
+    // Fetch initial history
+    fetchHistory();
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [fetchHistory, startRealtimePolling]);
 
   // Start Pipeline
   const handleSubmit = async (e: React.FormEvent) => {
@@ -354,6 +517,8 @@ export default function App() {
 
     setIsSubmitting(true);
     setIsPipelineActive(true);
+    const now = Date.now();
+    setStartedAtTimestamp(now);
     setElapsedSeconds(0);
     setStreamUrl(null);
     setDownloadUrl(null);
@@ -371,7 +536,7 @@ export default function App() {
       {
         id: 2,
         title: 'High-Speed Aria2c Download (16 Threads)',
-        description: 'Multi-threaded cloud ingest to fetch complete media file',
+        description: 'Multi-threaded cloud ingest to fetch complete media file (<5MB protection active)',
         status: 'pending'
       },
       {
@@ -402,7 +567,10 @@ export default function App() {
 
     // Step 1: URL Validation
     setTimeout(async () => {
-      const isValid = cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://') || cleanUrl.toLowerCase() === 'test';
+      const isValid =
+        cleanUrl.startsWith('http://') ||
+        cleanUrl.startsWith('https://') ||
+        cleanUrl.toLowerCase() === 'test';
       if (!isValid) {
         updateStepStatus(1, 'failed', 'Invalid URL format. URL must start with http:// or https://');
         setIsSubmitting(false);
@@ -443,7 +611,7 @@ export default function App() {
     }, 1000);
   };
 
-  // Step 6: Supabase Sync
+  // Dedicated Supabase Sync
   const handleSupabaseUpload = async () => {
     const cleanId = tmdbIdInput.trim();
     if (!cleanId) {
@@ -458,8 +626,8 @@ export default function App() {
       await dispatchWorkflow('sync_supabase', {
         action: 'sync_supabase',
         tmdb_id: cleanId,
-        stream_url: streamUrl || `https://t.me/c/4408587176`,
-        download_url: downloadUrl || `https://t.me/c/4408587176?download=true`
+        stream_url: streamUrl || 'https://t.me/c/4408587176',
+        download_url: downloadUrl || 'https://t.me/c/4408587176?download=true'
       });
 
       setSupabaseStatus('completed');
@@ -470,6 +638,7 @@ export default function App() {
         'Supabase Synced',
         `Record for TMDb #${cleanId} updated with live stream server URLs.`
       );
+      setTimeout(fetchHistory, 2000);
     } catch (err: any) {
       setSupabaseStatus('failed');
       setSupabaseMessage(err.message || 'Supabase sync failed.');
@@ -481,6 +650,61 @@ export default function App() {
     const mins = Math.floor(sec / 60);
     const s = sec % 60;
     return `${mins}m ${s < 10 ? '0' : ''}${s}s`;
+  };
+
+  const formatTimestamp = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (_) {
+      return dateStr;
+    }
+  };
+
+  const getStatusBadge = (status: string, conclusion: string | null) => {
+    if (status === 'in_progress') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 animate-pulse">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Running
+        </span>
+      );
+    }
+    if (status === 'queued') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+          <Clock className="w-3 h-3" />
+          Queued
+        </span>
+      );
+    }
+    if (conclusion === 'success') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+          <Check className="w-3 h-3 stroke-[3]" />
+          Success
+        </span>
+      );
+    }
+    if (conclusion === 'cancelled') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
+          <Square className="w-2.5 h-2.5 fill-current" />
+          Cancelled
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500/20 text-rose-300 border border-rose-500/30">
+        <AlertCircle className="w-3 h-3" />
+        Failed
+      </span>
+    );
   };
 
   return (
@@ -537,9 +761,19 @@ export default function App() {
             </div>
             <h1 className="font-semibold text-sm text-white tracking-tight">Telegram Cloud Media Engine</h1>
           </div>
-          <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Target: {APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleResetSession}
+              title="Reset workspace session"
+              className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset State</span>
+            </button>
+            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="hidden sm:inline">Target: {APP_CONFIG.GITHUB_OWNER}/{APP_CONFIG.GITHUB_REPO}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -563,15 +797,15 @@ export default function App() {
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono"
               />
               <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2">
-                <span>Multi-thread Aria2c download &bull; Smart stream copy for files &le; 1.9GB</span>
-                <span>Type <code>test</code> for instant self-test</span>
+                <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le;1.9GB</span>
+                <span>Type <code>test</code> for instant verification</span>
               </div>
             </div>
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs text-slate-400 flex items-center gap-1.5">
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
-                Ultra-fast 2GB Telegram single-file pipeline
+                2GB Telegram MTProto Parallel Engine
               </span>
 
               <div className="flex items-center gap-2.5">
@@ -633,10 +867,11 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleCancelPipeline}
+                    disabled={isCancelling}
                     className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 font-medium bg-rose-950/50 border border-rose-800/60 px-3 py-1.5 rounded-lg transition-colors"
                   >
                     <Square className="w-3 h-3 fill-current" />
-                    <span>Abort Run</span>
+                    <span>{isCancelling ? 'Stopping...' : 'Abort Run'}</span>
                   </button>
                 )}
 
@@ -881,6 +1116,86 @@ export default function App() {
             )}
           </section>
         )}
+
+        {/* GitHub Actions History Section (Feature 8) */}
+        <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                <HistoryIcon className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm text-white">GitHub Actions Pipeline History</h3>
+                <p className="text-xs text-slate-400">Last 5 automated cloud runner executions</p>
+              </div>
+            </div>
+
+            <button
+              onClick={fetchHistory}
+              disabled={isLoadingHistory}
+              className="text-xs text-slate-300 hover:text-white flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin text-indigo-400' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {isLoadingHistory && historyRuns.length === 0 ? (
+            <div className="p-8 flex flex-col items-center justify-center text-slate-400 gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+              <span className="text-xs">Fetching workflow history from GitHub Actions...</span>
+            </div>
+          ) : historyError ? (
+            <div className="p-4 rounded-xl bg-rose-950/20 border border-rose-800/40 text-rose-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{historyError}</span>
+            </div>
+          ) : historyRuns.length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-400">
+              No recent workflow runs found. Launch your first pipeline above.
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-800/60">
+              {historyRuns.map((run) => (
+                <div key={run.id} className="py-3 flex items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-200 truncate">
+                        {run.display_title || run.name || 'Automated Media Pipeline'}
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-400">
+                        #{run.run_number}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-slate-500" />
+                        {formatTimestamp(run.created_at)}
+                      </span>
+                      <span className="font-mono bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800/80 text-[10px]">
+                        {run.event}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    {getStatusBadge(run.status, run.conclusion)}
+
+                    <a
+                      href={run.html_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1.5 rounded-lg bg-slate-800/60 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                      title="View GitHub Logs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </main>
 
       {/* Footer */}
