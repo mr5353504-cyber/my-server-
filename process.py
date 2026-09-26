@@ -4,22 +4,23 @@ Zero-Reencode Hyper-Speed Media Pipeline (Telegram 2GB Cloud Backup Engine)
 ==========================================================================
 Optimized for 1,000+ Movies Batch Pipeline (< 15-30s Total Pipeline Execution)
 
-Key Optimizations & Features:
-1. Intelligent Cloud Redirect Resolver (Handles instantcloud.org, drive, etc.):
-   - Automatically detects HTML landing pages, meta-redirects, and <a href="..."> download links.
-   - Extracts the direct high-speed video stream URL (e.g. video-downloads.googleusercontent.com).
+Key Optimizations & Bug Fixes:
+1. Bulletproof Cloud Redirect Resolver (Handles instantcloud.org, drive, etc.):
+   - Automatically follows HTTP 301/302 redirects to direct CDN video URLs.
+   - Strictly targets `<a href="...">` video/CDN links and excludes `<link href="...">` (fonts, stylesheets, scripts).
+   - Eliminates false positives like 'fonts.googleapis.com'.
 2. Lightning-Fast Aria2c Download (16 Threads):
    - Multi-threaded download with 16 connections (-x16 -s16 --max-connection-per-server=16 -k1M).
    - Ingests the media file directly to /tmp/media_engine_run/input_media.mp4.
 3. Strict 5MB File Size Safety Check:
-   - Validates that the downloaded file is a real media file (>= 5MB) and not a broken error page.
+   - Validates that the downloaded file is a real media file (>= 5MB) and not an empty error page.
 4. Complete Removal of Slow FFmpeg Re-encoding:
    - ZERO re-encoding, zero CPU waste on free GitHub Actions runners.
    - Files <= 2000 MB: Instant direct stream copy (ffmpeg -c copy) in ~10 seconds.
    - Files > 2000 MB: Pure Python binary file splitting (rb/wb buffer) into 1.9GB chunks (Part 1, Part 2)
      in 2 to 5 seconds with 100% original quality.
 5. High-Speed Parallel MTProto Chunk Uploading:
-   - Multi-worker concurrent chunk upload (SaveBigFilePartRequest with 8-12 parallel workers).
+   - Multi-worker concurrent chunk upload (SaveBigFilePartRequest with 10 parallel workers).
    - Achieves 40-80 MB/s upload speeds across MTProto data centers, eliminating upload bottlenecks.
    - Real-time chunk progress logging and automatic retry with exponential backoff.
 6. Supabase Atomic Sync:
@@ -75,6 +76,13 @@ MAX_PARALLEL_UPLOAD_WORKERS = 10                   # 10 Concurrent MTProto uploa
 DEFAULT_TELEGRAM_API_ID = 2040
 DEFAULT_TELEGRAM_API_HASH = "b18441a1ff607e10a989891a5462e627"
 
+IGNORED_HOSTS = (
+    "fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com",
+    "googletagmanager.com", "google-analytics.com", "gstatic.com",
+    "schema.org", "w3.org", "github.com", "twitter.com", "facebook.com"
+)
+IGNORED_EXTS = (".css", ".js", ".ico", ".svg", ".png", ".jpg", ".jpeg", ".woff", ".woff2", ".ttf")
+
 
 def load_input_parameters():
     """Extract pipeline parameters from environment variables, GitHub event json, or sys.argv."""
@@ -129,9 +137,10 @@ def load_input_parameters():
 def resolve_cloud_redirect_url(url: str) -> str:
     """
     Intelligent Cloud Redirect Resolver:
-    - Resolves intermediate landing pages (e.g. instantcloud.org, drive bypass, shorteners).
-    - Detects HTTP 301/302 redirects and parses HTML '<a href="..."' or 'Redirecting...' pages.
-    - Returns the final direct video stream URL for aria2c.
+    - Automatically follows HTTP 301/302 redirects to direct CDN video URLs.
+    - If redirected directly to a video stream or CDN, returns it immediately.
+    - If an HTML redirect page is returned, extracts the actual media link from <a href="...">
+      while strictly ignoring fonts, stylesheets, scripts, tracking pixels, and ads.
     """
     if not url or url.lower().strip() == "test":
         return url
@@ -142,29 +151,68 @@ def resolve_cloud_redirect_url(url: str) -> str:
         "Accept": "*/*"
     }
 
+    # Method 1: Use requests to follow HTTP redirects to direct stream URL
+    try:
+        with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=20, verify=False) as r:
+            final_url = r.url
+            content_type = (r.headers.get("content-type") or "").lower()
+            content_len = r.headers.get("content-length")
+
+            # If redirected directly to a video stream or significant file
+            if "video" in content_type or "octet-stream" in content_type or (content_len and int(content_len) > 5 * 1024 * 1024):
+                logger.info(f"Resolved direct CDN video stream ({content_type}): {final_url[:120]}...")
+                return final_url
+
+            if any(dom in final_url for dom in ["googleusercontent.com", "storage.googleapis.com"]):
+                logger.info(f"Resolved CDN download link: {final_url[:120]}...")
+                return final_url
+
+            # If returned an HTML landing page, parse only <a ... href="...">
+            if "html" in content_type or "text" in content_type:
+                html_sample = ""
+                for chunk in r.iter_content(chunk_size=32768):
+                    html_sample = chunk.decode("utf-8", errors="ignore")
+                    break
+
+                a_tags = re.findall(r'<a\s+[^>]*href=[\"\'](https?://[^\"\']+)[\"\']', html_sample, re.I)
+                for cand in a_tags:
+                    clean_cand = cand.replace("&amp;", "&")
+                    cand_lower = clean_cand.lower()
+
+                    if any(ign in cand_lower for ign in IGNORED_HOSTS):
+                        continue
+                    if any(cand_lower.endswith(ext) or f"{ext}?" in cand_lower for ext in IGNORED_EXTS):
+                        continue
+                    if any(kw in cand_lower for kw in ["googleusercontent", "download", "media", "storage", ".mp4", ".mkv", "video"]):
+                        logger.info(f"Extracted direct video stream from HTML <a href>: {clean_cand[:120]}...")
+                        return clean_cand
+    except Exception as req_err:
+        logger.warning(f"Requests redirect resolution notice: {req_err}")
+
+    # Method 2: Fallback with urllib.request
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=15) as resp:
             final_url = resp.geturl()
-
-            # If redirected to a CDN / direct download URL
-            if final_url != url and any(domain in final_url for domain in ["googleusercontent.com", "storage", "cdn", "media"]):
-                logger.info(f"Resolved direct CDN URL via HTTP redirect: {final_url[:120]}...")
+            content_type = (resp.headers.get("content-type") or "").lower()
+            if "video" in content_type or "octet-stream" in content_type:
                 return final_url
-
-            # Inspect body for HTML redirect links (like instantcloud.org)
-            sample = resp.read(16384).decode("utf-8", errors="ignore")
-            if "<html" in sample.lower() or "redirecting" in sample.lower():
-                m = re.search(r'href=[\"\'](https?://[^\"\']*(?:googleusercontent|download|media|storage|cdn)[^\"\']*)[\"\']', sample, re.I)
-                if not m:
-                    m = re.search(r'href=[\"\'](https?://[^\"\']+)[\"\']', sample, re.I)
-                if m:
-                    extracted = m.group(1).replace("&amp;", "&")
-                    if extracted.startswith("http") and extracted != url:
-                        logger.info(f"Extracted direct video stream URL from HTML redirect page: {extracted[:120]}...")
-                        return extracted
-    except Exception as e:
-        logger.warning(f"Cloud URL resolver notice: {e}")
+            if any(dom in final_url for dom in ["googleusercontent.com", "storage.googleapis.com"]):
+                return final_url
+            if "html" in content_type:
+                sample = resp.read(32768).decode("utf-8", errors="ignore")
+                a_tags = re.findall(r'<a\s+[^>]*href=[\"\'](https?://[^\"\']+)[\"\']', sample, re.I)
+                for cand in a_tags:
+                    clean_cand = cand.replace("&amp;", "&")
+                    cand_lower = clean_cand.lower()
+                    if any(ign in cand_lower for ign in IGNORED_HOSTS):
+                        continue
+                    if any(cand_lower.endswith(ext) or f"{ext}?" in cand_lower for ext in IGNORED_EXTS):
+                        continue
+                    if any(kw in cand_lower for kw in ["googleusercontent", "download", "media", "storage", ".mp4", ".mkv", "video"]):
+                        return clean_cand
+    except Exception as url_err:
+        logger.warning(f"urllib resolver notice: {url_err}")
 
     return url
 
@@ -220,13 +268,25 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
         if res.returncode == 0 and target_file.exists():
             # If aria2c downloaded an HTML landing page instead of video, parse it!
             if target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:
-                content = target_file.read_bytes()[:8192].decode("utf-8", errors="ignore")
-                m = re.search(r'href=[\"\'](https?://[^\"\']+)[\"\']', content)
-                if m and m.group(1) != effective_url:
-                    nested_url = m.group(1).replace("&amp;", "&")
-                    logger.info(f"HTML redirect detected in downloaded file. Re-downloading from target: {nested_url[:120]}...")
+                content = target_file.read_bytes()[:16384].decode("utf-8", errors="ignore")
+                a_matches = re.findall(r'<a\s+[^>]*href=[\"\'](https?://[^\"\']+)[\"\']', content, re.I)
+                valid_url = None
+                for cand in a_matches:
+                    clean_cand = cand.replace("&amp;", "&")
+                    cand_l = clean_cand.lower()
+                    if any(ign in cand_l for ign in IGNORED_HOSTS):
+                        continue
+                    if any(cand_l.endswith(ext) or f"{ext}?" in cand_l for ext in IGNORED_EXTS):
+                        continue
+                    if any(kw in cand_l for kw in ["googleusercontent", "download", "storage", "video", ".mp4", ".mkv"]):
+                        valid_url = clean_cand
+                        break
+
+                if valid_url and valid_url != effective_url:
+                    logger.info(f"Target video URL found in HTML anchor: {valid_url[:120]}...")
                     target_file.unlink(missing_ok=True)
-                    aria_cmd[-1] = nested_url
+                    aria_cmd[-1] = valid_url
+                    effective_url = valid_url
                     subprocess.run(aria_cmd, check=False)
 
             if target_file.exists() and target_file.stat().st_size >= MIN_VALID_FILE_SIZE_BYTES:
@@ -263,7 +323,7 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
             ffmpeg_cmd = ["ffmpeg", "-y", "-i", effective_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", str(target_file)]
             subprocess.run(ffmpeg_cmd, check=True)
         else:
-            logger.info("Streaming via direct multi-chunk HTTP request with redirect following...")
+            logger.info(f"Streaming via direct multi-chunk HTTP request with redirect following: {effective_url[:120]}...")
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
             with requests.get(effective_url, headers=headers, stream=True, timeout=180, allow_redirects=True, verify=False) as r:
                 r.raise_for_status()
