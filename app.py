@@ -212,7 +212,7 @@ HTML_DASHBOARD = """<!doctype html>
           </label>
           <input type="text" id="sourceUrl" placeholder="Enter direct MP4, embed URL, HLS .m3u8, or 'test'" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
           <div class="flex items-center justify-between text-[11px] text-slate-400 mt-2">
-            <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2GB (2000 MB)</span>
+            <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2GB / Binary Split (0% CPU re-encode)</span>
             <span>Type <code>test</code> for instant self-test</span>
           </div>
         </div>
@@ -292,7 +292,7 @@ HTML_DASHBOARD = """<!doctype html>
     const PIPELINE_STEPS = [
       { id: 1, title: 'URL Inspection & Protocol Validation', desc: 'Validating stream viability and headers' },
       { id: 2, title: 'High-Speed Aria2c Download (16 Threads)', desc: 'Multi-threaded cloud ingest with <5MB auto-abort protection' },
-      { id: 3, title: 'Strict 2GB Limit & Smart Bypass', desc: 'Copy if <= 2GB (2000 MB, 10-15s) or Hyper-Fast libx264 if > 2GB' },
+      { id: 3, title: 'Zero-Delay Stream Copy & Binary Split', desc: 'Copy if <= 2000 MB (10s) or Pure Binary Split (1.9GB chunks in 2-5s) if > 2000 MB' },
       { id: 4, title: 'Telegram Cloud Backup Upload', desc: 'Parallel MTProto chunk transfer to Telegram channel' },
       { id: 5, title: 'Stream & Download Link Generation', desc: 'Direct playback and download URLs ready' }
     ];

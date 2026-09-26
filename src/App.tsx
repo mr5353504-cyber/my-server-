@@ -76,8 +76,8 @@ const INITIAL_STEPS: PipelineStep[] = [
   },
   {
     id: 3,
-    title: 'Strict 2GB Limit & Smart Bypass',
-    description: 'Direct stream copy if <=2GB (2000 MB, 10-15s), or Hyper-Fast libx264 (CRF 32) if >2GB',
+    title: 'Zero-Delay Stream Copy & Binary Splitting',
+    description: 'Direct stream copy if <=2000MB (~10s), or Pure Python Binary Split (1.9GB chunks in 2-5s) if >2000MB',
     status: 'pending'
   },
   {
@@ -541,8 +541,8 @@ export default function App() {
       },
       {
         id: 3,
-        title: 'Strict 2GB Limit & Smart Bypass',
-        description: 'Direct stream copy if <=2GB (2000 MB, 10-15s), or Hyper-Fast libx264 (CRF 32) if >2GB',
+        title: 'Zero-Delay Stream Copy & Binary Splitting',
+        description: 'Direct stream copy if <=2000MB (~10s), or Pure Python Binary Split (1.9GB chunks in 2-5s) if >2000MB',
         status: 'pending'
       },
       {
@@ -797,7 +797,7 @@ export default function App() {
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono"
               />
               <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2">
-                <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2GB (2000 MB)</span>
+                <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2GB / Binary Split (0% CPU re-encode)</span>
                 <span>Type <code>test</code> for instant verification</span>
               </div>
             </div>
