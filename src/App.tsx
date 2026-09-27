@@ -123,16 +123,80 @@ export default function App() {
     videoUrl?: string;
     downloadUrl?: string;
     overview?: string;
+    serverSources?: { label: string; url: string }[];
   } | null>(null);
+  const [activeVideoSrc, setActiveVideoSrc] = useState<string>('');
+  const [videoPlaybackError, setVideoPlaybackError] = useState<string | null>(null);
+  const [isResolvingStream, setIsResolvingStream] = useState(false);
 
-  const openCinemaPlayer = (id?: string, sUrl?: string | null, dUrl?: string | null) => {
+  const resolveStreamCandidates = async (id: string, directUrl?: string | null) => {
+    setIsResolvingStream(true);
+    setVideoPlaybackError(null);
+    const candidates: { label: string; url: string }[] = [];
+
+    // 1. Direct URL provided from user/pipeline
+    if (directUrl && (directUrl.startsWith('http://') || directUrl.startsWith('https://')) && !directUrl.includes('/watch?id=')) {
+      candidates.push({ label: 'Direct Source / Ingest Stream', url: directUrl });
+    }
+
+    // 2. Local / Proxy Range Stream API
+    candidates.push({ label: 'Range-Request Proxy Gateway (/api/stream)', url: `/api/stream?id=${encodeURIComponent(id)}` });
+
+    // 3. Supabase Database lookup
+    try {
+      const cleanUrl = APP_CONFIG.SUPABASE_URL.replace(/\/$/, '');
+      const query = !isNaN(Number(id))
+        ? `${cleanUrl}/rest/v1/movies?tmdb_id=eq.${id}&select=*`
+        : `${cleanUrl}/rest/v1/movies?download_url=ilike.*${encodeURIComponent(id)}*&select=*`;
+
+      const resp = await fetch(query, {
+        headers: {
+          apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder',
+          Accept: 'application/json'
+        }
+      });
+      if (resp.ok) {
+        const rows = await resp.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          const movie = rows[0];
+          const servers = movie.servers || [];
+          for (const s of servers) {
+            if (s && s.telegram_cdn_url && s.telegram_cdn_url.startsWith('http')) {
+              candidates.push({ label: 'Telegram High-Speed CDN', url: s.telegram_cdn_url });
+            }
+            if (s && s.url && s.url.startsWith('http') && !s.url.includes('/watch?id=')) {
+              candidates.push({ label: s.name || 'Direct Cinema Host', url: s.url });
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 4. Fallback public sample stream for preview testing
+    candidates.push({
+      label: 'Sample 1080p Test Stream (Google CDN)',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
+    });
+
+    setIsResolvingStream(false);
+    return candidates;
+  };
+
+  const openCinemaPlayer = async (id?: string, sUrl?: string | null, dUrl?: string | null) => {
     const effectiveId = id || tmdbIdInput.trim() || '157336';
+    setVideoPlaybackError(null);
+
+    const candidates = await resolveStreamCandidates(effectiveId, sUrl || sourceUrl);
+    const initialSource = candidates[0]?.url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    setActiveVideoSrc(initialSource);
+
     setCinemaMovieData({
       id: effectiveId,
       title: `Movie #${effectiveId}`,
-      videoUrl: sUrl || streamUrl || `${window.location.origin}/watch?id=${effectiveId}`,
+      videoUrl: initialSource,
       downloadUrl: dUrl || downloadUrl || `${window.location.origin}/download?id=${effectiveId}`,
-      overview: '1080p single-file seamless cinema stream played natively on this website without Telegram app redirects.'
+      overview: '1080p single-file seamless cinema stream played natively on this website without Telegram app redirects.',
+      serverSources: candidates
     });
     setCinemaPlayerOpen(true);
   };
@@ -1299,17 +1363,98 @@ export default function App() {
 
           {/* Video Container */}
           <div className="max-w-5xl w-full mx-auto my-auto py-4">
-            <div className="relative aspect-video w-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+            <div className="relative aspect-video w-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center">
               <video
+                key={activeVideoSrc}
                 controls
                 autoPlay
                 playsInline
                 className="w-full h-full object-contain"
-                src={cinemaMovieData?.videoUrl || sourceUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+                src={activeVideoSrc}
+                onError={() => {
+                  setVideoPlaybackError(
+                    'Direct stream did not respond or browser codec could not decode the remote stream URL. You can select another server below or play the high-res test stream.'
+                  );
+                }}
+                onPlay={() => {
+                  setVideoPlaybackError(null);
+                }}
               >
                 Your browser does not support HTML5 video playback.
               </video>
+
+              {/* Error & Fallback Banner */}
+              {videoPlaybackError && (
+                <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-3">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-base font-semibold text-white mb-1">Video Stream Notice</h4>
+                  <p className="text-xs text-slate-300 max-w-md mb-4 leading-relaxed">
+                    {videoPlaybackError}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      onClick={() => {
+                        const fallback = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+                        setActiveVideoSrc(fallback);
+                        setVideoPlaybackError(null);
+                        showToast('loading', 'Testing Stream', 'Loaded public 1080p stream sample.');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-lg shadow-indigo-600/20"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Play Test 1080p Stream</span>
+                    </button>
+                    {cinemaMovieData?.serverSources && cinemaMovieData.serverSources.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const nextSource = cinemaMovieData.serverSources?.find(s => s.url !== activeVideoSrc)?.url;
+                          if (nextSource) {
+                            setActiveVideoSrc(nextSource);
+                            setVideoPlaybackError(null);
+                          }
+                        }}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Switch Server</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Server Source Switcher Strip */}
+            {cinemaMovieData?.serverSources && cinemaMovieData.serverSources.length > 0 && (
+              <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                <span className="text-slate-400 text-[11px] font-medium flex items-center gap-1 flex-shrink-0">
+                  <Server className="w-3 h-3 text-indigo-400" />
+                  Active Server:
+                </span>
+                {cinemaMovieData.serverSources.map((srv, idx) => {
+                  const isCurrent = activeVideoSrc === srv.url;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setActiveVideoSrc(srv.url);
+                        setVideoPlaybackError(null);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-1.5 flex-shrink-0 ${
+                        isCurrent
+                          ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                          : 'bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${isCurrent ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+                      <span>{srv.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Video Action Toolbar */}
             <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl bg-slate-900/80 border border-slate-800">
@@ -1320,8 +1465,9 @@ export default function App() {
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => {
-                    if (cinemaMovieData?.videoUrl) {
-                      navigator.clipboard.writeText(cinemaMovieData.videoUrl);
+                    const toCopy = activeVideoSrc || cinemaMovieData?.videoUrl;
+                    if (toCopy) {
+                      navigator.clipboard.writeText(toCopy);
                       showToast('success', 'Link Copied', 'Direct streaming route copied to clipboard.');
                     }
                   }}
@@ -1331,7 +1477,7 @@ export default function App() {
                   <span>Copy Stream Link</span>
                 </button>
                 <a
-                  href={cinemaMovieData?.downloadUrl || cinemaMovieData?.videoUrl || '#'}
+                  href={cinemaMovieData?.downloadUrl || activeVideoSrc || '#'}
                   download
                   className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
                 >
