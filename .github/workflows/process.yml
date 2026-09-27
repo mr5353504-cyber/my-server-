@@ -71,5 +71,6 @@ jobs:
           SOURCE_URL: ${{ github.event.client_payload.source_url || github.event.inputs.source_url }}
           STREAM_URL: ${{ github.event.client_payload.stream_url || github.event.inputs.stream_url }}
           DOWNLOAD_URL: ${{ github.event.client_payload.download_url || github.event.inputs.download_url }}
+          WEB_APP_URL: ${{ secrets.WEB_APP_URL || github.event.client_payload.web_app_url || github.event.inputs.web_app_url }}
         run: |
           python process.py

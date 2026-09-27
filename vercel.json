@@ -1,0 +1,25 @@
+{
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/stream",
+      "destination": "/api/stream"
+    },
+    {
+      "source": "/api/download",
+      "destination": "/api/download"
+    },
+    {
+      "source": "/watch",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/download",
+      "destination": "/api/download"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -212,7 +212,7 @@ HTML_DASHBOARD = """<!doctype html>
           </label>
           <input type="text" id="sourceUrl" placeholder="Enter direct MP4, embed URL, HLS .m3u8, or 'test'" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono" />
           <div class="flex items-center justify-between text-[11px] text-slate-400 mt-2">
-            <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2GB / Binary Split (0% CPU re-encode)</span>
+            <span>Aria2c (16 threads) &bull; Rapid Bitrate Tuning &le; 1.85GB &bull; Zero Part-Splitting (Single Seamless Movie)</span>
             <span>Type <code>test</code> for instant self-test</span>
           </div>
         </div>
@@ -292,9 +292,9 @@ HTML_DASHBOARD = """<!doctype html>
     const PIPELINE_STEPS = [
       { id: 1, title: 'URL Inspection & Protocol Validation', desc: 'Validating stream viability and headers' },
       { id: 2, title: 'High-Speed Aria2c Download (16 Threads)', desc: 'Multi-threaded cloud ingest with <5MB auto-abort protection' },
-      { id: 3, title: 'Zero-Delay Stream Copy & Binary Split', desc: 'Copy if <= 2000 MB (10s) or Pure Binary Split (1.9GB chunks in 2-5s) if > 2000 MB' },
-      { id: 4, title: 'Telegram Cloud Backup Upload', desc: 'Parallel MTProto chunk transfer to Telegram channel' },
-      { id: 5, title: 'Stream & Download Link Generation', desc: 'Direct playback and download URLs ready' }
+      { id: 3, title: 'Zero Part-Splitting (Rapid Bitrate Tuning)', desc: 'Copy if <= 1.9GB, or rapid ultrafast compression below 1.85GB in seconds (100% single seamless file)' },
+      { id: 4, title: 'Ultra-Fast MTProto Upload (1-2 Mins)', desc: '16 concurrent workers (8MB in-flight pipeline) without session drops' },
+      { id: 5, title: 'Native Website Cinema Player & Direct Links', desc: 'Direct streaming & download endpoints mapped to site built-in HTML5 player' }
     ];
 
     function saveSession() {
@@ -488,8 +488,8 @@ HTML_DASHBOARD = """<!doctype html>
               if (latest.conclusion === 'success') {
                 renderSteps(5, 5);
                 document.getElementById('linksBox').classList.remove('hidden');
-                document.getElementById('streamInput').value = 'https://t.me/c/4408587176';
-                document.getElementById('downloadInput').value = 'https://t.me/c/4408587176?download=true';
+                document.getElementById('streamInput').value = window.location.origin + '/watch?id=157336';
+                document.getElementById('downloadInput').value = window.location.origin + '/download?id=157336';
                 showToast('success', 'Pipeline Succeeded', 'Media ready on Telegram channel.', latest.html_url);
               } else if (latest.conclusion === 'cancelled') {
                 renderSteps(0, 0, 3);

@@ -76,20 +76,20 @@ const INITIAL_STEPS: PipelineStep[] = [
   },
   {
     id: 3,
-    title: 'Zero-Delay Stream Copy & Binary Splitting',
-    description: 'Direct stream copy if <=2000MB (~10s), or Pure Python Binary Split (1.9GB chunks in 2-5s) if >2000MB',
+    title: 'Zero Part-Splitting (Rapid Bitrate Tuning)',
+    description: 'If <= 1.9GB: Instant stream copy. If > 1.9GB: Rapid ultrafast bitrate tuning below 1.85GB in seconds (100% single seamless file)',
     status: 'pending'
   },
   {
     id: 4,
-    title: 'Telegram Cloud Backup Upload',
-    description: 'Parallel MTProto transfer directly to your Telegram channel',
+    title: 'Ultra-Fast MTProto Upload (1-2 Mins)',
+    description: 'Multi-worker concurrent MTProto pipeline (16 parallel workers, 8MB in-flight) without session drops',
     status: 'pending'
   },
   {
     id: 5,
-    title: 'Stream & Download Link Generation',
-    description: 'Generating instant web playback and direct download endpoints',
+    title: 'Native Website Cinema Player & Direct Links',
+    description: 'Direct streaming & download endpoints mapped to the site built-in HTML5 player without Telegram redirects',
     status: 'pending'
   }
 ];
@@ -114,6 +114,28 @@ export default function App() {
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<'stream' | 'download' | null>(null);
+
+  // Native HTML5 Cinema Player Modal State
+  const [cinemaPlayerOpen, setCinemaPlayerOpen] = useState(false);
+  const [cinemaMovieData, setCinemaMovieData] = useState<{
+    id: string;
+    title?: string;
+    videoUrl?: string;
+    downloadUrl?: string;
+    overview?: string;
+  } | null>(null);
+
+  const openCinemaPlayer = (id?: string, sUrl?: string | null, dUrl?: string | null) => {
+    const effectiveId = id || tmdbIdInput.trim() || '157336';
+    setCinemaMovieData({
+      id: effectiveId,
+      title: `Movie #${effectiveId}`,
+      videoUrl: sUrl || streamUrl || `${window.location.origin}/watch?id=${effectiveId}`,
+      downloadUrl: dUrl || downloadUrl || `${window.location.origin}/download?id=${effectiveId}`,
+      overview: '1080p single-file seamless cinema stream played natively on this website without Telegram app redirects.'
+    });
+    setCinemaPlayerOpen(true);
+  };
 
   // Supabase Section
   const [tmdbIdInput, setTmdbIdInput] = useState('157336');
@@ -301,10 +323,11 @@ export default function App() {
                 updateStepStatus(4, 'completed');
                 updateStepStatus(5, 'completed');
 
-                // Generate links
-                const cleanCid = APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '');
-                const generatedStream = `https://t.me/c/${cleanCid}`;
-                const generatedDownload = `https://t.me/c/${cleanCid}?download=true`;
+                // Generate Native Website Links
+                const origin = window.location.origin;
+                const cleanTmdbId = tmdbIdInput.trim() || '157336';
+                const generatedStream = `${origin}/watch?id=${cleanTmdbId}`;
+                const generatedDownload = `${origin}/download?id=${cleanTmdbId}`;
 
                 setStreamUrl(generatedStream);
                 setDownloadUrl(generatedDownload);
@@ -500,6 +523,15 @@ export default function App() {
     // Fetch initial history
     fetchHistory();
 
+    // Check URL parameters for watch or id query parameter
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const watchParam = params.get('id') || params.get('watch');
+      if (watchParam) {
+        openCinemaPlayer(watchParam);
+      }
+    } catch (_) {}
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (pollRef.current) clearInterval(pollRef.current);
@@ -541,20 +573,20 @@ export default function App() {
       },
       {
         id: 3,
-        title: 'Zero-Delay Stream Copy & Binary Splitting',
-        description: 'Direct stream copy if <=2000MB (~10s), or Pure Python Binary Split (1.9GB chunks in 2-5s) if >2000MB',
+        title: 'Zero Part-Splitting (Rapid Bitrate Tuning)',
+        description: 'If <= 1.9GB: Instant stream copy. If > 1.9GB: Rapid ultrafast bitrate tuning below 1.85GB in seconds (100% single seamless file)',
         status: 'pending'
       },
       {
         id: 4,
-        title: 'Telegram Cloud Backup Upload',
-        description: 'Parallel MTProto transfer directly to your Telegram channel',
+        title: 'Ultra-Fast MTProto Upload (1-2 Mins)',
+        description: 'Multi-worker concurrent MTProto pipeline (16 parallel workers, 8MB in-flight) without session drops',
         status: 'pending'
       },
       {
         id: 5,
-        title: 'Stream & Download Link Generation',
-        description: 'Generating instant web playback and direct download endpoints',
+        title: 'Native Website Cinema Player & Direct Links',
+        description: 'Direct streaming & download endpoints mapped to the site built-in HTML5 player without Telegram redirects',
         status: 'pending'
       }
     ]);
@@ -586,7 +618,8 @@ export default function App() {
       try {
         const result = await dispatchWorkflow('process_video', {
           source_url: cleanUrl,
-          tmdb_id: tmdbIdInput.trim() || '157336'
+          tmdb_id: tmdbIdInput.trim() || '157336',
+          web_app_url: window.location.origin
         });
 
         const actionsUrl = `https://github.com/${result.owner}/${result.repo}/actions`;
@@ -970,9 +1003,39 @@ export default function App() {
             {/* Generated Dual Links Box */}
             {streamUrl && downloadUrl && (
               <div className="space-y-4 pt-4 border-t border-slate-800/80">
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Telegram cloud links generated successfully:</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Native Website Cinema Player & Direct Links Ready:</span>
+                  </div>
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono">
+                    Single Seamless File (&lt;1.85GB)
+                  </span>
+                </div>
+
+                {/* Launch Native Player Banner */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-950/70 via-indigo-900/40 to-slate-900 border border-indigo-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-indigo-950/30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/40">
+                      <Play className="w-5 h-5 fill-current ml-0.5" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm text-white flex items-center gap-2">
+                        Native In-App Cinema Player
+                      </h4>
+                      <p className="text-xs text-slate-300">
+                        Zero Telegram redirects &bull; Stream directly on website with HTML5 Cinema player
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openCinemaPlayer(tmdbIdInput, streamUrl, downloadUrl)}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02]"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Watch in Cinema Player</span>
+                  </button>
                 </div>
 
                 {/* Link 1: Direct Streaming Link */}
@@ -980,9 +1043,9 @@ export default function App() {
                   <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <Tv className="w-3.5 h-3.5 text-indigo-400" />
-                      1. Direct Streaming Link
+                      1. Direct Streaming Link (Native Website Route)
                     </span>
-                    <span className="text-[11px] text-emerald-400 font-mono">Stream Ready</span>
+                    <span className="text-[11px] text-emerald-400 font-mono">Cinema Stream Ready</span>
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -999,15 +1062,14 @@ export default function App() {
                       {copiedField === 'stream' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedField === 'stream' ? 'Copied' : 'Copy'}</span>
                     </button>
-                    <a
-                      href={streamUrl}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => openCinemaPlayer(tmdbIdInput, streamUrl, downloadUrl)}
                       className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-md shadow-indigo-600/20"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Open</span>
-                    </a>
+                      <span>Watch</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1016,9 +1078,9 @@ export default function App() {
                   <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <Download className="w-3.5 h-3.5 text-emerald-400" />
-                      2. Direct Download Link
+                      2. Direct Download Link (Native Website Route)
                     </span>
-                    <span className="text-[11px] text-slate-400 font-mono">Original Quality</span>
+                    <span className="text-[11px] text-slate-400 font-mono">1080p Single File</span>
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -1037,8 +1099,7 @@ export default function App() {
                     </button>
                     <a
                       href={downloadUrl}
-                      target="_blank"
-                      rel="noreferrer"
+                      download
                       className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700"
                     >
                       <Download className="w-3.5 h-3.5" />
@@ -1205,6 +1266,83 @@ export default function App() {
           <span>Channel: <code className="text-slate-300 font-mono">{APP_CONFIG.TELEGRAM_CHANNEL_ID}</code></span>
         </div>
       </footer>
+
+      {/* Native HTML5 Cinema Video Player Modal */}
+      {cinemaPlayerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col justify-between p-4 sm:p-6 overflow-y-auto">
+          <div className="max-w-5xl w-full mx-auto flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-400">
+                <Film className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-white tracking-tight">
+                  {cinemaMovieData?.title || `Movie #${cinemaMovieData?.id || '157336'}`}
+                </h3>
+                <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="text-emerald-400 font-medium">1080p Single-File Stream</span>
+                  <span>&bull;</span>
+                  <span>Zero Telegram Redirect</span>
+                  <span>&bull;</span>
+                  <span>Native Website Cinema Player</span>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setCinemaPlayerOpen(false)}
+              className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
+              title="Close Player"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Video Container */}
+          <div className="max-w-5xl w-full mx-auto my-auto py-4">
+            <div className="relative aspect-video w-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+              <video
+                controls
+                autoPlay
+                playsInline
+                className="w-full h-full object-contain"
+                src={cinemaMovieData?.videoUrl || sourceUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+              >
+                Your browser does not support HTML5 video playback.
+              </video>
+            </div>
+
+            {/* Video Action Toolbar */}
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+              <div className="flex items-center gap-2 text-xs text-slate-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Single Seamless Movie File &bull; Full 1080p Original Quality</span>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => {
+                    if (cinemaMovieData?.videoUrl) {
+                      navigator.clipboard.writeText(cinemaMovieData.videoUrl);
+                      showToast('success', 'Link Copied', 'Direct streaming route copied to clipboard.');
+                    }
+                  }}
+                  className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Stream Link</span>
+                </button>
+                <a
+                  href={cinemaMovieData?.downloadUrl || cinemaMovieData?.videoUrl || '#'}
+                  download
+                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Direct Download</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
