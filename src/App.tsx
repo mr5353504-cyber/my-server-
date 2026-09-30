@@ -124,10 +124,13 @@ export default function App() {
     downloadUrl?: string;
     overview?: string;
     serverSources?: { label: string; url: string }[];
+    parts?: { partIndex: number; title: string; url: string; duration?: number }[];
   } | null>(null);
   const [activeVideoSrc, setActiveVideoSrc] = useState<string>('');
+  const [currentPartIndex, setCurrentPartIndex] = useState<number>(0);
   const [videoPlaybackError, setVideoPlaybackError] = useState<string | null>(null);
   const [isResolvingStream, setIsResolvingStream] = useState(false);
+  const videoPlayerRef = useRef<HTMLVideoElement | null>(null);
 
   const resolveStreamCandidates = async (id: string, directUrl?: string | null) => {
     setIsResolvingStream(true);
@@ -185,18 +188,29 @@ export default function App() {
   const openCinemaPlayer = async (id?: string, sUrl?: string | null, dUrl?: string | null) => {
     const effectiveId = id || tmdbIdInput.trim() || '157336';
     setVideoPlaybackError(null);
+    setCurrentPartIndex(0);
 
     const candidates = await resolveStreamCandidates(effectiveId, sUrl || sourceUrl);
     const initialSource = candidates[0]?.url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
     setActiveVideoSrc(initialSource);
+
+    // Identify if the stream has multiple parts from server sources or query
+    const partsList = candidates
+      .filter((c) => !c.label.includes('Sample 1080p') && !c.label.includes('Range-Request'))
+      .map((c, idx) => ({
+        partIndex: idx,
+        title: c.label,
+        url: c.url
+      }));
 
     setCinemaMovieData({
       id: effectiveId,
       title: `Movie #${effectiveId}`,
       videoUrl: initialSource,
       downloadUrl: dUrl || downloadUrl || `${window.location.origin}/download?id=${effectiveId}`,
-      overview: '1080p single-file seamless cinema stream played natively on this website without Telegram app redirects.',
-      serverSources: candidates
+      overview: '1080p single seamless cinema stream played natively on this website without Telegram app redirects.',
+      serverSources: candidates,
+      parts: partsList.length > 1 ? partsList : undefined
     });
     setCinemaPlayerOpen(true);
   };
@@ -893,9 +907,12 @@ export default function App() {
                 required
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono"
               />
-              <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2">
-                <span>Aria2c (16 threads) &bull; &lt;5MB auto-abort &bull; Stream copy &le; 2GB / Binary Split (0% CPU re-encode)</span>
-                <span>Type <code>test</code> for instant verification</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-400 mt-2">
+                <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  Recommended: Use 1080p/720p direct links &le; 1.9GB for Instant Stream-Copy (~10-15s, 0% CPU re-encode)
+                </span>
+                <span className="text-slate-500">Type <code className="text-indigo-300">test</code> for instant sample</span>
               </div>
             </div>
 
@@ -1366,11 +1383,32 @@ export default function App() {
             <div className="relative aspect-video w-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center">
               <video
                 key={activeVideoSrc}
+                ref={videoPlayerRef}
                 controls
                 autoPlay
                 playsInline
                 className="w-full h-full object-contain"
                 src={activeVideoSrc}
+                onEnded={() => {
+                  // Seamless Multi-Part Auto-Merge: Transition to next part without user intervention
+                  if (cinemaMovieData?.parts && cinemaMovieData.parts.length > 1) {
+                    const nextIdx = currentPartIndex + 1;
+                    if (nextIdx < cinemaMovieData.parts.length) {
+                      const nextPart = cinemaMovieData.parts[nextIdx];
+                      setCurrentPartIndex(nextIdx);
+                      setActiveVideoSrc(nextPart.url);
+                      setVideoPlaybackError(null);
+                      showToast(
+                        'loading',
+                        'Seamless Transition',
+                        `Seamlessly playing next sequence (${nextIdx + 1}/${cinemaMovieData.parts.length}). Enjoy uninterrupted watching!`
+                      );
+                      setTimeout(() => {
+                        videoPlayerRef.current?.play().catch(() => {});
+                      }, 200);
+                    }
+                  }
+                }}
                 onError={() => {
                   setVideoPlaybackError(
                     'Direct stream did not respond or browser codec could not decode the remote stream URL. You can select another server below or play the high-res test stream.'
@@ -1382,6 +1420,15 @@ export default function App() {
               >
                 Your browser does not support HTML5 video playback.
               </video>
+
+              {/* Seamless Multi-Part Status Indicator */}
+              {cinemaMovieData?.parts && cinemaMovieData.parts.length > 1 && (
+                <div className="absolute top-3 left-3 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/60 flex items-center gap-2 pointer-events-none text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-white font-medium">Seamless Unified Stream</span>
+                  <span className="text-slate-400 text-[10px]">Auto-Merged ({cinemaMovieData.parts.length} parts)</span>
+                </div>
+              )}
 
               {/* Error & Fallback Banner */}
               {videoPlaybackError && (

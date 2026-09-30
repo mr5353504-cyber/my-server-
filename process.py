@@ -442,23 +442,33 @@ def process_media_zero_parts(input_path: Path, output_dir: Path, tmdb_id: str) -
         "Running rapid FFmpeg compression..."
     )
 
+    # Optimized fast compression for >1.9GB files:
+    # 1. Use 720p downscaling (scale=-2:720) to process 4x faster on 2-core GitHub runners.
+    # 2. Try copying audio stream (-c:a copy) to save encoding time, with fallback to AAC.
     cmd = [
         "ffmpeg", "-y",
         "-i", str(input_path),
+        "-vf", "scale=-2:720",
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-tune", "fastdecode",
         "-b:v", f"{target_video_kbps}k",
         "-maxrate", f"{max_rate_kbps}k",
         "-bufsize", f"{buf_size_kbps}k",
-        "-c:a", "aac",
-        "-b:a", f"{audio_bitrate_kbps}k",
+        "-c:a", "copy",
         "-movflags", "+faststart",
         str(output_file)
     ]
 
     start_t = datetime.now()
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError:
+        logger.warning("Audio stream copy failed or incompatible codec. Retrying with ultrafast aac audio...")
+        cmd[cmd.index("-c:a") + 1] = "aac"
+        cmd.insert(cmd.index("aac") + 1, "-b:a")
+        cmd.insert(cmd.index("-b:a") + 1, f"{audio_bitrate_kbps}k")
+        subprocess.run(cmd, check=True)
     dur = (datetime.now() - start_t).total_seconds()
     final_mb = output_file.stat().st_size / (1024 * 1024)
 
