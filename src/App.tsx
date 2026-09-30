@@ -196,7 +196,7 @@ export default function App() {
 
     // Identify if the stream has multiple parts from server sources or query
     const partsList = candidates
-      .filter((c) => !c.label.includes('Sample 1080p') && !c.label.includes('Range-Request'))
+      .filter((c) => !c.label.includes('Sample 1080p') && !c.label.includes('Range-Request') && (c.label.includes('Part') || c.label.includes('Seamless')))
       .map((c, idx) => ({
         partIndex: idx,
         title: c.label,
