@@ -160,6 +160,55 @@ def resolve_cloud_redirect_url(url: str) -> str:
     }
 
     try:
+        # Specialized InstantCloud & Cloud Hoster Resolver
+        if "instantcloud.org" in url or "instantcloud" in url:
+            logger.info("Engaging InstantCloud deep link resolver...")
+            try:
+                # 1. First fetch the full HTML of the download page
+                ic_headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Referer": url
+                }
+                ic_resp = requests.get(url, headers=ic_headers, timeout=20, verify=False)
+                if ic_resp.status_code == 200:
+                    page_html = ic_resp.text
+                    
+                    # Pattern A: Direct download form action or POST / GET submit target
+                    form_actions = re.findall(r'<form[^>]*action=[\"\']([^\"\']+)[\"\']', page_html, re.I)
+                    for action in form_actions:
+                        if "download" in action or "file" in action or "stream" in action:
+                            if action.startswith("/"):
+                                action = f"https://instantcloud.org{action}"
+                            logger.info(f"InstantCloud detected form action endpoint: {action}")
+                            # Test if action redirects directly to CDN
+                            act_resp = requests.get(action, headers=ic_headers, stream=True, allow_redirects=True, timeout=15, verify=False)
+                            if "video" in (act_resp.headers.get("content-type") or "").lower() or (act_resp.headers.get("content-length") and int(act_resp.headers.get("content-length")) > 5000000):
+                                logger.info(f"InstantCloud resolved direct CDN stream via form: {act_resp.url[:120]}")
+                                return act_resp.url
+
+                    # Pattern B: Look for JavaScript window.location or direct storage URLs
+                    js_urls = re.findall(r'(?:href|src|download_url|file_url|window\.location)\s*(?:=|:|\()\s*[\"\'](https?://[^\"\']+)[\"\']', page_html, re.I)
+                    for cand in js_urls:
+                        cand_l = cand.lower()
+                        if any(ign in cand_l for ign in IGNORED_HOSTS) or any(cand_l.endswith(ext) for ext in IGNORED_EXTS):
+                            continue
+                        if any(kw in cand_l for kw in ["cdn", "storage", "direct", "download", ".mp4", ".mkv", "token="]):
+                            logger.info(f"InstantCloud resolved stream candidate from JS: {cand[:120]}")
+                            return cand
+
+                    # Pattern C: Standard <a href> download buttons
+                    all_anchors = re.findall(r'<a[^>]*href=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</a>', page_html, re.I | re.S)
+                    for href, text in all_anchors:
+                        if any(kw in (href + text).lower() for kw in ["download now", "direct download", "download", "click here"]):
+                            if href.startswith("/"):
+                                href = f"https://instantcloud.org{href}"
+                            if href != url:
+                                logger.info(f"InstantCloud found anchor download link: {href[:120]}")
+                                return href
+            except Exception as ic_err:
+                logger.warning(f"InstantCloud deep resolver notice: {ic_err}")
+
         with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=20, verify=False) as r:
             final_url = r.url
             content_type = (r.headers.get("content-type") or "").lower()
@@ -332,6 +381,30 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
                     for chunk in r.iter_content(chunk_size=16 * 1024 * 1024):
                         if chunk:
                             f.write(chunk)
+
+            # If downloaded file is still under 5MB, check if it contains another redirect link or download token
+            if target_file.exists() and target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:
+                try:
+                    small_content = target_file.read_bytes().decode("utf-8", errors="ignore")
+                    more_matches = re.findall(r'(?:href|src|download_url|action)\s*=\s*[\"\'](https?://[^\"\']+)[\"\']', small_content, re.I)
+                    for cand in more_matches:
+                        cand_l = cand.lower()
+                        if any(ign in cand_l for ign in IGNORED_HOSTS) or any(cand_l.endswith(ext) for ext in IGNORED_EXTS):
+                            continue
+                        if any(kw in cand_l for kw in ["download", "storage", "video", "cdn", ".mp4", ".mkv", "token="]):
+                            if cand != effective_url:
+                                logger.info(f"Retrying secondary stream target found in small file: {cand[:120]}...")
+                                with requests.get(cand, headers=headers, stream=True, timeout=180, allow_redirects=True, verify=False) as r2:
+                                    if r2.status_code == 200:
+                                        with open(target_file, "wb") as f2:
+                                            for chunk in r2.iter_content(chunk_size=16 * 1024 * 1024):
+                                                if chunk:
+                                                    f2.write(chunk)
+                                        if target_file.stat().st_size >= MIN_VALID_FILE_SIZE_BYTES:
+                                            logger.info("Secondary stream download succeeded.")
+                                            break
+                except Exception as sec_err:
+                    logger.warning(f"Secondary stream recovery notice: {sec_err}")
 
     if not target_file.exists():
         raise FileNotFoundError(f"Failed to download media to: {target_file}")
