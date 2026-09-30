@@ -73,4 +73,4 @@ jobs:
           DOWNLOAD_URL: ${{ github.event.client_payload.download_url || github.event.inputs.download_url }}
           WEB_APP_URL: ${{ secrets.WEB_APP_URL || github.event.client_payload.web_app_url || github.event.inputs.web_app_url }}
         run: |
-          python process.py
+          python -u process.py

@@ -38,7 +38,11 @@ from datetime import datetime
 from pathlib import Path
 import urllib.request
 import urllib.error
+import urllib3
 import requests
+
+# Suppress InsecureRequestWarning for clean runner logs
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 try:
     from supabase import create_client, Client
@@ -216,17 +220,20 @@ def resolve_cloud_redirect_url(url: str) -> str:
             except Exception as ic_err:
                 logger.warning(f"InstantCloud deep resolver notice: {ic_err}")
 
+        sys.stdout.flush()
         with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=20, verify=False) as r:
             final_url = r.url
             content_type = (r.headers.get("content-type") or "").lower()
             content_len = r.headers.get("content-length")
 
-            if "video" in content_type or "octet-stream" in content_type or (content_len and int(content_len) > 5 * 1024 * 1024):
-                logger.info(f"Resolved direct CDN video stream ({content_type}): {final_url[:120]}...")
+            if any(dom in final_url for dom in ["googleusercontent.com", "storage.googleapis.com"]):
+                logger.info(f"Resolved CDN direct stream link: {final_url[:120]}...")
+                sys.stdout.flush()
                 return final_url
 
-            if any(dom in final_url for dom in ["googleusercontent.com", "storage.googleapis.com"]):
-                logger.info(f"Resolved CDN download link: {final_url[:120]}...")
+            if "video" in content_type or "octet-stream" in content_type or (content_len and int(content_len) > 5 * 1024 * 1024):
+                logger.info(f"Resolved direct CDN video stream ({content_type}): {final_url[:120]}...")
+                sys.stdout.flush()
                 return final_url
 
             if "html" in content_type or "text" in content_type:
