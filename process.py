@@ -143,6 +143,23 @@ def load_input_parameters():
     return action_type, tmdb_id, source_url, stream_url, download_url, web_app_url
 
 
+def clean_and_normalize_url(url: str) -> str:
+    """Sanitize and normalize URLs to eliminate invalid hostnames or broken prefixes."""
+    if not url:
+        return url
+    u = url.strip().strip("'").strip('"')
+    # Fix common copy-paste or regex artifact bugs like //instantchttps or double domain concatenation
+    if "instantchttps" in u:
+        u = re.sub(r'https?://[^/]*instantchttps[^/]*', 'https://instantcloud.org', u)
+    # Fix duplicated schemes like https://https://
+    u = re.sub(r'^(https?://)+', r'\1', u)
+    # Fix malformed domain concatenations
+    u = re.sub(r'(instantcloud\.org/file/[^/]+)/+download.*', r'\1/download', u)
+    if not u.startswith("http://") and not u.startswith("https://") and u.lower() != "test":
+        u = f"https://{u}"
+    return u
+
+
 def resolve_cloud_redirect_url(url: str) -> str:
     """
     Intelligent Cloud Redirect Resolver:
@@ -153,6 +170,7 @@ def resolve_cloud_redirect_url(url: str) -> str:
     if not url or url.lower().strip() == "test":
         return url
 
+    url = clean_and_normalize_url(url)
     logger.info(f"Resolving cloud stream URL: {url}")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -168,44 +186,33 @@ def resolve_cloud_redirect_url(url: str) -> str:
                 ic_headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Referer": url
+                    "Referer": "https://instantcloud.org/"
                 }
                 ic_resp = requests.get(url, headers=ic_headers, timeout=20, verify=False)
                 if ic_resp.status_code == 200:
                     page_html = ic_resp.text
                     
-                    # Pattern A: Direct download form action or POST / GET submit target
-                    form_actions = re.findall(r'<form[^>]*action=[\"\']([^\"\']+)[\"\']', page_html, re.I)
-                    for action in form_actions:
-                        if "download" in action or "file" in action or "stream" in action:
-                            if action.startswith("/"):
-                                action = f"https://instantcloud.org{action}"
-                            logger.info(f"InstantCloud detected form action endpoint: {action}")
-                            # Test if action redirects directly to CDN
-                            act_resp = requests.get(action, headers=ic_headers, stream=True, allow_redirects=True, timeout=15, verify=False)
-                            if "video" in (act_resp.headers.get("content-type") or "").lower() or (act_resp.headers.get("content-length") and int(act_resp.headers.get("content-length")) > 5000000):
-                                logger.info(f"InstantCloud resolved direct CDN stream via form: {act_resp.url[:120]}")
-                                return act_resp.url
+                    # Pattern A: Look for direct download buttons with clean URLs
+                    all_anchors = re.findall(r'<a[^>]*href=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</a>', page_html, re.I | re.S)
+                    for href, text in all_anchors:
+                        href = clean_and_normalize_url(href)
+                        if any(kw in (href + text).lower() for kw in ["download now", "direct download", "download", "click here"]):
+                            if href.startswith("/"):
+                                href = f"https://instantcloud.org{href}"
+                            if href != url and ("http://" in href or "https://" in href):
+                                logger.info(f"InstantCloud found anchor download link: {href[:120]}")
+                                return clean_and_normalize_url(href)
 
                     # Pattern B: Look for JavaScript window.location or direct storage URLs
                     js_urls = re.findall(r'(?:href|src|download_url|file_url|window\.location)\s*(?:=|:|\()\s*[\"\'](https?://[^\"\']+)[\"\']', page_html, re.I)
                     for cand in js_urls:
+                        cand = clean_and_normalize_url(cand)
                         cand_l = cand.lower()
                         if any(ign in cand_l for ign in IGNORED_HOSTS) or any(cand_l.endswith(ext) for ext in IGNORED_EXTS):
                             continue
-                        if any(kw in cand_l for kw in ["cdn", "storage", "direct", "download", ".mp4", ".mkv", "token="]):
+                        if any(kw in cand_l for kw in ["cdn", "storage", "direct", ".mp4", ".mkv", "token="]):
                             logger.info(f"InstantCloud resolved stream candidate from JS: {cand[:120]}")
                             return cand
-
-                    # Pattern C: Standard <a href> download buttons
-                    all_anchors = re.findall(r'<a[^>]*href=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</a>', page_html, re.I | re.S)
-                    for href, text in all_anchors:
-                        if any(kw in (href + text).lower() for kw in ["download now", "direct download", "download", "click here"]):
-                            if href.startswith("/"):
-                                href = f"https://instantcloud.org{href}"
-                            if href != url:
-                                logger.info(f"InstantCloud found anchor download link: {href[:120]}")
-                                return href
             except Exception as ic_err:
                 logger.warning(f"InstantCloud deep resolver notice: {ic_err}")
 
@@ -373,14 +380,23 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
             ffmpeg_cmd = ["ffmpeg", "-y", "-i", effective_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", str(target_file)]
             subprocess.run(ffmpeg_cmd, check=True)
         else:
+            effective_url = clean_and_normalize_url(effective_url)
             logger.info(f"Streaming via direct multi-chunk HTTP request: {effective_url[:120]}...")
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
-            with requests.get(effective_url, headers=headers, stream=True, timeout=180, allow_redirects=True, verify=False) as r:
-                r.raise_for_status()
-                with open(target_file, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=16 * 1024 * 1024):
-                        if chunk:
-                            f.write(chunk)
+            try:
+                with requests.get(effective_url, headers=headers, stream=True, timeout=180, allow_redirects=True, verify=False) as r:
+                    r.raise_for_status()
+                    with open(target_file, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=16 * 1024 * 1024):
+                            if chunk:
+                                f.write(chunk)
+            except Exception as stream_err:
+                logger.warning(f"Direct HTTP chunk stream notice ({stream_err}). Trying fallback curl/ffmpeg...")
+                try:
+                    curl_cmd = ["curl", "-k", "-L", "-A", headers["User-Agent"], "-o", str(target_file), effective_url]
+                    subprocess.run(curl_cmd, check=False)
+                except Exception as curl_err:
+                    logger.warning(f"Curl fallback notice: {curl_err}")
 
             # If downloaded file is still under 5MB, check if it contains another redirect link or download token
             if target_file.exists() and target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:

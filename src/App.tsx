@@ -619,10 +619,17 @@ export default function App() {
   // Start Pipeline
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanUrl = sourceUrl.trim();
+    let cleanUrl = sourceUrl.trim();
     if (!cleanUrl) {
       showToast('error', 'URL Required', 'Please enter a valid video stream or direct URL.');
       return;
+    }
+
+    // Sanitize malformed URL patterns (e.g. instantchttps or double prefix)
+    cleanUrl = cleanUrl.replace(/https?:\/\/[^/]*instantchttps[^/]*/gi, 'https://instantcloud.org');
+    cleanUrl = cleanUrl.replace(/(instantcloud\.org\/file\/[^/]+)\/+download.*/gi, '$1/download');
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://') && cleanUrl.toLowerCase() !== 'test') {
+      cleanUrl = `https://${cleanUrl}`;
     }
 
     setIsSubmitting(true);
