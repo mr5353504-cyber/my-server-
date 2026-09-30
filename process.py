@@ -167,7 +167,8 @@ def clean_and_normalize_url(url: str) -> str:
 def resolve_cloud_redirect_url(url: str) -> str:
     """
     Intelligent Cloud Redirect Resolver:
-    - Quickly resolves final download stream without getting blocked by anti-bot protections.
+    - If URL is an InstantCloud link, polls the internal /download?json=1&probe=1 API until the direct Google Photos CDN download_url is prepared.
+    - Bypasses the HTML "Preparing Download" loading screen and extracts the true high-speed direct media link.
     """
     if not url or url.lower().strip() == "test":
         return url
@@ -176,15 +177,51 @@ def resolve_cloud_redirect_url(url: str) -> str:
     logger.info(f"Resolving cloud stream URL: {url}")
     sys.stdout.flush()
 
-    # If it is InstantCloud, direct download route is always /file/<id>/download
+    # Specialized InstantCloud API Probe Engine
     if "instantcloud.org" in url or "instantcloud" in url:
-        if "/file/" in url:
-            file_match = re.search(r'/file/([^/]+)', url)
-            if file_match:
-                clean_url = f"https://instantcloud.org/file/{file_match.group(1)}/download"
-                logger.info(f"InstantCloud direct CDN stream routed: {clean_url}")
-                sys.stdout.flush()
-                return clean_url
+        file_match = re.search(r'/file/([^/]+)', url)
+        if file_match:
+            file_id = file_match.group(1)
+            probe_url = f"https://instantcloud.org/file/{file_id}/download?json=1&probe=1"
+            logger.info(f"InstantCloud detected. Engaging JSON probe pipeline on ID: {file_id}")
+            sys.stdout.flush()
+
+            probe_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "application/json",
+                "Referer": f"https://instantcloud.org/file/{file_id}/download"
+            }
+
+            import time
+            start_time = time.time()
+            max_wait_seconds = 180  # wait up to 3 minutes for cloud preparing
+            attempt = 0
+
+            while time.time() - start_time < max_wait_seconds:
+                attempt += 1
+                try:
+                    req = urllib.request.Request(probe_url, headers=probe_headers)
+                    with urllib.request.urlopen(req, timeout=12) as resp:
+                        raw_data = resp.read().decode("utf-8", errors="ignore")
+                        data = json.loads(raw_data)
+
+                        if data.get("download_url"):
+                            direct_cdn_url = clean_and_normalize_url(data["download_url"])
+                            logger.info(f"InstantCloud direct CDN stream extracted: {direct_cdn_url[:120]}...")
+                            sys.stdout.flush()
+                            return direct_cdn_url
+
+                        status_msg = data.get("message") or data.get("code") or "Queued"
+                        retry_after = data.get("retry_after") or 4
+                        logger.info(f"InstantCloud preparing stream (Attempt #{attempt}, status: {status_msg}). Retrying in {retry_after}s...")
+                        sys.stdout.flush()
+                        time.sleep(min(max(retry_after, 3), 10))
+                except Exception as probe_err:
+                    logger.warning(f"Probe attempt #{attempt} notice: {probe_err}. Retrying in 4s...")
+                    sys.stdout.flush()
+                    time.sleep(4)
+
+            logger.warning("InstantCloud probe timeout exceeded. Falling back to direct URL...")
 
     return url
 
