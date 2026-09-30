@@ -167,9 +167,7 @@ def clean_and_normalize_url(url: str) -> str:
 def resolve_cloud_redirect_url(url: str) -> str:
     """
     Intelligent Cloud Redirect Resolver:
-    - Automatically follows HTTP 301/302 redirects to direct CDN video URLs.
-    - If redirected directly to a video stream or CDN, returns it immediately.
-    - If it's an InstantCloud download endpoint, let Aria2c download directly.
+    - Quickly resolves final download stream without getting blocked by anti-bot protections.
     """
     if not url or url.lower().strip() == "test":
         return url
@@ -178,89 +176,15 @@ def resolve_cloud_redirect_url(url: str) -> str:
     logger.info(f"Resolving cloud stream URL: {url}")
     sys.stdout.flush()
 
-    # If it is already a direct download endpoint, pass straight to Aria2c
-    if "instantcloud.org/file/" in url and url.endswith("/download"):
-        logger.info("Direct InstantCloud download endpoint detected. Forwarding directly to Aria2c...")
-        sys.stdout.flush()
-        return url
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "*/*"
-    }
-
-    try:
-        # Specialized InstantCloud & Cloud Hoster Resolver
-        if "instantcloud.org" in url or "instantcloud" in url:
-            logger.info("Engaging InstantCloud deep link resolver...")
-            sys.stdout.flush()
-            # If not ending in /download, try adding /download directly
-            if "/file/" in url and not url.endswith("/download"):
-                clean_dl = f"{url.rstrip('/')}/download"
-                logger.info(f"Constructed direct InstantCloud download route: {clean_dl}")
+    # If it is InstantCloud, direct download route is always /file/<id>/download
+    if "instantcloud.org" in url or "instantcloud" in url:
+        if "/file/" in url:
+            file_match = re.search(r'/file/([^/]+)', url)
+            if file_match:
+                clean_url = f"https://instantcloud.org/file/{file_match.group(1)}/download"
+                logger.info(f"InstantCloud direct CDN stream routed: {clean_url}")
                 sys.stdout.flush()
-                return clean_dl
-
-        sys.stdout.flush()
-        with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=20, verify=False) as r:
-            final_url = r.url
-            content_type = (r.headers.get("content-type") or "").lower()
-            content_len = r.headers.get("content-length")
-
-            if any(dom in final_url for dom in ["googleusercontent.com", "storage.googleapis.com"]):
-                logger.info(f"Resolved CDN direct stream link: {final_url[:120]}...")
-                sys.stdout.flush()
-                return final_url
-
-            if "video" in content_type or "octet-stream" in content_type or (content_len and int(content_len) > 5 * 1024 * 1024):
-                logger.info(f"Resolved direct CDN video stream ({content_type}): {final_url[:120]}...")
-                sys.stdout.flush()
-                return final_url
-
-            if "html" in content_type or "text" in content_type:
-                html_sample = ""
-                for chunk in r.iter_content(chunk_size=32768):
-                    html_sample = chunk.decode("utf-8", errors="ignore")
-                    break
-
-                a_tags = re.findall(r'<a\s+[^>]*href=[\"\'](https?://[^\"\']+)[\"\']', html_sample, re.I)
-                for cand in a_tags:
-                    clean_cand = cand.replace("&amp;", "&")
-                    cand_lower = clean_cand.lower()
-
-                    if any(ign in cand_lower for ign in IGNORED_HOSTS):
-                        continue
-                    if any(cand_lower.endswith(ext) or f"{ext}?" in cand_lower for ext in IGNORED_EXTS):
-                        continue
-                    if any(kw in cand_lower for kw in ["googleusercontent", "download", "media", "storage", ".mp4", ".mkv", "video"]):
-                        logger.info(f"Extracted direct video stream from HTML <a href>: {clean_cand[:120]}...")
-                        return clean_cand
-    except Exception as req_err:
-        logger.warning(f"Requests redirect resolution notice: {req_err}")
-
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            final_url = resp.geturl()
-            content_type = (resp.headers.get("content-type") or "").lower()
-            if "video" in content_type or "octet-stream" in content_type:
-                return final_url
-            if any(dom in final_url for dom in ["googleusercontent.com", "storage.googleapis.com"]):
-                return final_url
-            if "html" in content_type:
-                sample = resp.read(32768).decode("utf-8", errors="ignore")
-                a_tags = re.findall(r'<a\s+[^>]*href=[\"\'](https?://[^\"\']+)[\"\']', sample, re.I)
-                for cand in a_tags:
-                    clean_cand = cand.replace("&amp;", "&")
-                    cand_lower = clean_cand.lower()
-                    if any(ign in cand_lower for ign in IGNORED_HOSTS):
-                        continue
-                    if any(cand_lower.endswith(ext) or f"{ext}?" in cand_lower for ext in IGNORED_EXTS):
-                        continue
-                    if any(kw in cand_lower for kw in ["googleusercontent", "download", "media", "storage", ".mp4", ".mkv", "video"]):
-                        return clean_cand
-    except Exception as url_err:
-        logger.warning(f"urllib resolver notice: {url_err}")
+                return clean_url
 
     return url
 
