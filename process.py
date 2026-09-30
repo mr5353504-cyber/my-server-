@@ -169,13 +169,21 @@ def resolve_cloud_redirect_url(url: str) -> str:
     Intelligent Cloud Redirect Resolver:
     - Automatically follows HTTP 301/302 redirects to direct CDN video URLs.
     - If redirected directly to a video stream or CDN, returns it immediately.
-    - Strictly targets <a href="..."> download links, completely ignoring font/css/js links.
+    - If it's an InstantCloud download endpoint, let Aria2c download directly.
     """
     if not url or url.lower().strip() == "test":
         return url
 
     url = clean_and_normalize_url(url)
     logger.info(f"Resolving cloud stream URL: {url}")
+    sys.stdout.flush()
+
+    # If it is already a direct download endpoint, pass straight to Aria2c
+    if "instantcloud.org/file/" in url and url.endswith("/download"):
+        logger.info("Direct InstantCloud download endpoint detected. Forwarding directly to Aria2c...")
+        sys.stdout.flush()
+        return url
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "*/*"
@@ -185,40 +193,13 @@ def resolve_cloud_redirect_url(url: str) -> str:
         # Specialized InstantCloud & Cloud Hoster Resolver
         if "instantcloud.org" in url or "instantcloud" in url:
             logger.info("Engaging InstantCloud deep link resolver...")
-            try:
-                # 1. First fetch the full HTML of the download page
-                ic_headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Referer": "https://instantcloud.org/"
-                }
-                ic_resp = requests.get(url, headers=ic_headers, timeout=20, verify=False)
-                if ic_resp.status_code == 200:
-                    page_html = ic_resp.text
-                    
-                    # Pattern A: Look for direct download buttons with clean URLs
-                    all_anchors = re.findall(r'<a[^>]*href=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</a>', page_html, re.I | re.S)
-                    for href, text in all_anchors:
-                        href = clean_and_normalize_url(href)
-                        if any(kw in (href + text).lower() for kw in ["download now", "direct download", "download", "click here"]):
-                            if href.startswith("/"):
-                                href = f"https://instantcloud.org{href}"
-                            if href != url and ("http://" in href or "https://" in href):
-                                logger.info(f"InstantCloud found anchor download link: {href[:120]}")
-                                return clean_and_normalize_url(href)
-
-                    # Pattern B: Look for JavaScript window.location or direct storage URLs
-                    js_urls = re.findall(r'(?:href|src|download_url|file_url|window\.location)\s*(?:=|:|\()\s*[\"\'](https?://[^\"\']+)[\"\']', page_html, re.I)
-                    for cand in js_urls:
-                        cand = clean_and_normalize_url(cand)
-                        cand_l = cand.lower()
-                        if any(ign in cand_l for ign in IGNORED_HOSTS) or any(cand_l.endswith(ext) for ext in IGNORED_EXTS):
-                            continue
-                        if any(kw in cand_l for kw in ["cdn", "storage", "direct", ".mp4", ".mkv", "token="]):
-                            logger.info(f"InstantCloud resolved stream candidate from JS: {cand[:120]}")
-                            return cand
-            except Exception as ic_err:
-                logger.warning(f"InstantCloud deep resolver notice: {ic_err}")
+            sys.stdout.flush()
+            # If not ending in /download, try adding /download directly
+            if "/file/" in url and not url.endswith("/download"):
+                clean_dl = f"{url.rstrip('/')}/download"
+                logger.info(f"Constructed direct InstantCloud download route: {clean_dl}")
+                sys.stdout.flush()
+                return clean_dl
 
         sys.stdout.flush()
         with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=20, verify=False) as r:
