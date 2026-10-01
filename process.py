@@ -194,24 +194,26 @@ def resolve_cloud_redirect_url(url: str) -> str:
 
             import time
             start_time = time.time()
-            max_wait_seconds = 180  # wait up to 3 minutes for cloud preparing
+            max_wait_seconds = 300  # wait up to 5 minutes as instantcloud caches Google Drive stream
             attempt = 0
 
             while time.time() - start_time < max_wait_seconds:
                 attempt += 1
                 try:
                     req = urllib.request.Request(probe_url, headers=probe_headers)
-                    with urllib.request.urlopen(req, timeout=12) as resp:
+                    with urllib.request.urlopen(req, timeout=15) as resp:
                         raw_data = resp.read().decode("utf-8", errors="ignore")
                         data = json.loads(raw_data)
 
                         if data.get("download_url"):
                             direct_cdn_url = clean_and_normalize_url(data["download_url"])
-                            logger.info(f"InstantCloud direct CDN stream extracted: {direct_cdn_url[:120]}...")
+                            file_title = data.get("filename") or "Media File"
+                            file_sz = data.get("file_size_human") or ""
+                            logger.info(f"InstantCloud direct CDN stream extracted ({file_title} - {file_sz}): {direct_cdn_url[:120]}...")
                             sys.stdout.flush()
                             return direct_cdn_url
 
-                        status_msg = data.get("message") or data.get("code") or "Queued"
+                        status_msg = data.get("message") or data.get("code") or "Direct link is being prepared safely"
                         retry_after = data.get("retry_after") or 4
                         logger.info(f"InstantCloud preparing stream (Attempt #{attempt}, status: {status_msg}). Retrying in {retry_after}s...")
                         sys.stdout.flush()
@@ -220,6 +222,16 @@ def resolve_cloud_redirect_url(url: str) -> str:
                     logger.warning(f"Probe attempt #{attempt} notice: {probe_err}. Retrying in 4s...")
                     sys.stdout.flush()
                     time.sleep(4)
+
+            # If loop finished, make one final direct request to probe endpoint
+            try:
+                req = urllib.request.Request(probe_url, headers=probe_headers)
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                    if data.get("download_url"):
+                        return clean_and_normalize_url(data["download_url"])
+            except Exception:
+                pass
 
             logger.warning("InstantCloud probe timeout exceeded. Falling back to direct URL...")
 
@@ -275,8 +287,22 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
         if res.returncode == 0 and target_file.exists():
             if target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:
                 content = target_file.read_bytes()[:16384].decode("utf-8", errors="ignore")
+                # Check if the HTML contains JSON or probe script for instantcloud
+                if "instantcloud.org" in effective_url or "window.IC_WAIT" in content:
+                    ic_match = re.search(r'/file/([^/]+)', effective_url)
+                    if ic_match:
+                        probe_api = f"https://instantcloud.org/file/{ic_match.group(1)}/download?json=1&probe=1"
+                        try:
+                            req_ic = urllib.request.Request(probe_api, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+                            with urllib.request.urlopen(req_ic, timeout=15) as r_ic:
+                                j_ic = json.loads(r_ic.read().decode())
+                                if j_ic.get("download_url"):
+                                    valid_url = clean_and_normalize_url(j_ic["download_url"])
+                        except Exception:
+                            pass
+
                 a_matches = re.findall(r'<a\s+[^>]*href=[\"\'](https?://[^\"\']+)[\"\']', content, re.I)
-                valid_url = None
+                valid_url = valid_url or None
                 for cand in a_matches:
                     clean_cand = cand.replace("&amp;", "&")
                     cand_l = clean_cand.lower()
