@@ -874,10 +874,13 @@ export default function App() {
       <header className="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-              <Film className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-full overflow-hidden border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)] bg-slate-900 flex items-center justify-center flex-shrink-0">
+              <img src="/logo.png" alt="Media Engine Logo" className="w-full h-full object-cover" />
             </div>
-            <h1 className="font-semibold text-sm text-white tracking-tight">Telegram Cloud Media Engine</h1>
+            <div>
+              <h1 className="font-semibold text-sm text-white tracking-tight leading-tight">Telegram Cloud Media Engine</h1>
+              <p className="text-[10px] text-emerald-400 font-mono tracking-wider">ULTRA-FAST STREAM ENGINE</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -1360,8 +1363,8 @@ export default function App() {
         <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col justify-between p-4 sm:p-6 overflow-y-auto">
           <div className="max-w-5xl w-full mx-auto flex items-center justify-between pb-3 border-b border-slate-800">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-400">
-                <Film className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-full overflow-hidden border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)] bg-slate-900 flex items-center justify-center flex-shrink-0">
+                <img src="/logo.png" alt="Media Engine Logo" className="w-full h-full object-cover" />
               </div>
               <div>
                 <h3 className="font-bold text-sm sm:text-base text-white tracking-tight">
