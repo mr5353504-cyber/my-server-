@@ -338,14 +338,17 @@ export default function App() {
     setIsLoadingHistory(true);
     setHistoryError(null);
     try {
+      const token = APP_CONFIG.GITHUB_PAT?.trim();
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github.v3+json'
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(
         `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs?per_page=5`,
-        {
-          headers: {
-            Accept: 'application/vnd.github.v3+json',
-            Authorization: `Bearer ${APP_CONFIG.GITHUB_PAT}`
-          }
-        }
+        { headers }
       );
 
       if (!res.ok) {
@@ -366,7 +369,11 @@ export default function App() {
   const dispatchWorkflow = async (eventType: string, payload: Record<string, any>) => {
     const owner = APP_CONFIG.GITHUB_OWNER;
     const repo = APP_CONFIG.GITHUB_REPO;
-    const token = APP_CONFIG.GITHUB_PAT;
+    const token = APP_CONFIG.GITHUB_PAT?.trim();
+
+    if (!token) {
+      throw new Error('গিটহাব টোকেন পাওয়া যায়নি। Vercel Settings-এ VITE_GITHUB_PAT সেট করে Redeploy দিন অথবা টোকেন যুক্ত করুন।');
+    }
 
     const response = await fetch(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/dispatches`,
@@ -404,14 +411,17 @@ export default function App() {
     const interval = setInterval(async () => {
       attempts++;
       try {
+        const token = APP_CONFIG.GITHUB_PAT?.trim();
+        const headers: Record<string, string> = {
+          Accept: 'application/vnd.github.v3+json'
+        };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
         const runsRes = await fetch(
           `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs?per_page=5`,
-          {
-            headers: {
-              Accept: 'application/vnd.github.v3+json',
-              Authorization: `Bearer ${APP_CONFIG.GITHUB_PAT}`
-            }
-          }
+          { headers }
         );
 
         if (!runsRes.ok) return;
@@ -432,12 +442,7 @@ export default function App() {
         // Fetch jobs for current run to inspect individual steps
         const jobsRes = await fetch(
           `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions/runs/${currentRun.id}/jobs`,
-          {
-            headers: {
-              Accept: 'application/vnd.github.v3+json',
-              Authorization: `Bearer ${APP_CONFIG.GITHUB_PAT}`
-            }
-          }
+          { headers }
         );
 
         if (!jobsRes.ok) return;
