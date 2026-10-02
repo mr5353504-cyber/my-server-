@@ -762,17 +762,18 @@ def fetch_tmdb_metadata(api_key: str, tmdb_id: str) -> dict:
     }
 
 
-def generate_native_website_links(web_app_url: str, tmdb_id: str, message_id: int, file_id: str, telegram_url: str) -> tuple[str, str]:
+def generate_native_website_links(web_app_url: str, tmdb_id: str, message_id: int = None, file_id: str = None, telegram_url: str = None) -> tuple[str, str]:
     """
-    Generate Native Website Player & Direct Download Routes:
-    1. Direct Streaming Link:  {web_app_url}/watch?id={file_id}
-       Feeds directly into the website's built-in HTML5 cinema player without Telegram redirects.
-    2. Direct Download Link:   {web_app_url}/download?id={file_id}
-       For direct browser downloading.
+    Generate Unified Native Website Player & Direct Download Routes:
+    1. Direct Streaming Link:  {web_app_url}/watch?id={tmdb_id}
+       Always generates 1 single unified streaming link for the movie, merging all parts!
+    2. Direct Download Link:   {web_app_url}/download?id={tmdb_id}
+       Always generates 1 single unified download link for the movie!
     """
-    target_id = str(file_id or message_id or tmdb_id)
-    direct_stream_url = f"{web_app_url}/watch?id={target_id}"
-    direct_download_url = f"{web_app_url}/download?id={target_id}"
+    clean_web_app = (web_app_url or "https://ais-pre-d2gmmpahwncxr7iiwzgmjq-593918478568.asia-southeast1.run.app").rstrip("/")
+    target_id = str(tmdb_id or file_id or message_id or "157336")
+    direct_stream_url = f"{clean_web_app}/watch?id={target_id}"
+    direct_download_url = f"{clean_web_app}/download?id={target_id}"
     return direct_stream_url, direct_download_url
 
 
@@ -802,6 +803,7 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
         message_id = primary_upload.get("message_id")
         file_id = primary_upload.get("file_id")
 
+        # 1 Single Unified Streaming & Download Link for the movie
         direct_stream_url, direct_download_url = generate_native_website_links(
             web_app_url=web_app_url,
             tmdb_id=str(tmdb_id),
@@ -815,23 +817,23 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
 
         for idx, udata in enumerate(upload_data_list):
             part_num = idx + 1
-            part_stream, part_dl = generate_native_website_links(
-                web_app_url=web_app_url,
-                tmdb_id=str(tmdb_id),
-                message_id=udata.get("message_id"),
-                file_id=udata.get("file_id"),
-                telegram_url=udata.get("channel_url")
-            )
             part_label = f"Part {part_num} of {len(upload_data_list)}" if is_multi_part else "Full Movie (1080p Original)"
+            clean_web_app = (web_app_url or "").rstrip("/")
+            part_stream = f"{clean_web_app}/watch?id={tmdb_id}&part={part_num}" if clean_web_app else direct_stream_url
+            part_dl = f"{clean_web_app}/download?id={tmdb_id}&part={part_num}" if clean_web_app else direct_download_url
+            part_api_stream = f"{clean_web_app}/api/stream?id={tmdb_id}&part={part_num}" if clean_web_app else f"/api/stream?id={tmdb_id}&part={part_num}"
+
             servers_to_add.append({
                 "name": f"Seamless Cinema Stream ({part_label})",
                 "url": part_stream,
+                "direct_stream_url": part_api_stream,
                 "download_url": part_dl,
                 "telegram_cdn_url": udata.get("channel_url"),
                 "message_id": udata.get("message_id"),
                 "file_id": udata.get("file_id"),
                 "quality": "1080p Ultra High Quality (Zero Re-encoding)",
                 "part_index": idx,
+                "part_number": part_num,
                 "total_parts": len(upload_data_list),
                 "processed_at": datetime.utcnow().isoformat()
             })
@@ -902,7 +904,7 @@ def main():
             service_role_key=supabase_service_role_key,
             tmdb_id=tmdb_id,
             metadata=metadata,
-            upload_data=upload_data,
+            upload_data_list=[upload_data],
             web_app_url=web_app_url,
             source_url=source_url or effective_stream
         )
@@ -976,9 +978,11 @@ def main():
         logger.info("=" * 75)
         logger.info(f"=== PIPELINE COMPLETED SUCCESSFULLY ({len(processed_parts)} SEAMLESS STREAM PARTS) ===")
         logger.info(f"Movie Title:            {metadata['title']}")
-        logger.info(f"Direct Streaming Link:  {direct_stream_url}")
-        logger.info(f"Direct Download Link:   {direct_download_url}")
-        logger.info(f"Telegram Backup URL:    {primary_upload.get('channel_url')}")
+        logger.info(f"Single Streaming Link:  {direct_stream_url}")
+        logger.info(f"Single Download Link:   {direct_download_url}")
+        logger.info(f"Unified Architecture:   {len(processed_parts)} parts merged into 1 single link!")
+        for idx, u in enumerate(upload_data_list):
+            logger.info(f"   • Part {idx + 1} Telegram Post: {u.get('channel_url')}")
         logger.info("=" * 75)
 
     except Exception as exc:

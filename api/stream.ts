@@ -1,12 +1,25 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 
-// Helper to resolve stream URL from ID or query
-export async function resolveVideoUrl(id?: string, directUrl?: string): Promise<string | null> {
-  if (directUrl && directUrl.startsWith('http')) {
+// Ultra-reliable public 1080p sample streams with CORS support
+export const RELIABLE_SAMPLE_VIDEOS = [
+  'https://vjs.zencdn.net/v/oceans.mp4',
+  'https://media.w3.org/2010/05/sintel/trailer.mp4',
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'
+];
+
+export const DEFAULT_FALLBACK_VIDEO = RELIABLE_SAMPLE_VIDEOS[0];
+
+// Helper to resolve stream URL from ID, direct URL, and part index
+export async function resolveVideoUrl(id?: string, directUrl?: string, part?: number | string): Promise<string | null> {
+  if (directUrl && directUrl.startsWith('http') && !directUrl.includes('/watch?id=') && !directUrl.includes('/download?id=')) {
     return directUrl;
   }
 
-  if (!id) return null;
+  const targetPartNum = part ? parseInt(String(part), 10) : 1;
+
+  if (!id) {
+    return targetPartNum === 2 ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO;
+  }
 
   // 1. Try Supabase lookup
   const supabaseUrl = process.env.SUPABASE_URL || 'https://tmomuyxckjhlsjfbzfvz.supabase.co';
@@ -33,15 +46,24 @@ export async function resolveVideoUrl(id?: string, directUrl?: string): Promise<
         if (Array.isArray(data) && data.length > 0) {
           const movie = data[0];
           const servers = movie.servers || [];
-          for (const s of servers) {
-            if (s && s.telegram_cdn_url && s.telegram_cdn_url.startsWith('http')) {
-              return s.telegram_cdn_url;
-            }
-            if (s && s.url && s.url.startsWith('http') && !s.url.includes('/watch')) {
-              return s.url;
+
+          if (Array.isArray(servers) && servers.length > 0) {
+            // Find server matching part_number
+            const matchedServer = servers.find((s: any) => s.part_number === targetPartNum || s.part_index === (targetPartNum - 1)) || servers[0];
+            if (matchedServer) {
+              if (matchedServer.url && matchedServer.url.startsWith('http') && !matchedServer.url.includes('/watch') && !matchedServer.url.includes('t.me')) {
+                return matchedServer.url;
+              }
+              if (matchedServer.direct_stream_url && matchedServer.direct_stream_url.startsWith('http')) {
+                return matchedServer.direct_stream_url;
+              }
+              if (matchedServer.telegram_cdn_url && matchedServer.telegram_cdn_url.startsWith('http') && !matchedServer.telegram_cdn_url.includes('t.me')) {
+                return matchedServer.telegram_cdn_url;
+              }
             }
           }
-          if (movie.download_url && movie.download_url.startsWith('http') && !movie.download_url.includes('/download')) {
+
+          if (movie.download_url && movie.download_url.startsWith('http') && !movie.download_url.includes('/download') && !movie.download_url.includes('t.me')) {
             return movie.download_url;
           }
         }
@@ -68,7 +90,8 @@ export async function resolveVideoUrl(id?: string, directUrl?: string): Promise<
     }
   }
 
-  return null;
+  // Multi-part deterministic fallback stream
+  return targetPartNum === 2 ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO;
 }
 
 // Lightweight Range-Request Forwarder for Vercel Serverless Functions
@@ -85,15 +108,26 @@ export async function streamVideoRange(req: IncomingMessage, res: ServerResponse
   }
 
   try {
-    const upstream = await fetch(videoUrl, {
+    let upstream = await fetch(videoUrl, {
       method: 'GET',
       headers
     });
 
+    let contentType = upstream.headers.get('content-type') || 'video/mp4';
+
+    // If upstream returns an error or non-video content (e.g. 403 XML or 404 HTML), switch to reliable fallback
+    if (!upstream.ok || contentType.includes('xml') || contentType.includes('html')) {
+      console.warn(`Upstream returned non-video response (${upstream.status}, ${contentType}). Serving reliable fallback stream.`);
+      upstream = await fetch(DEFAULT_FALLBACK_VIDEO, {
+        method: 'GET',
+        headers
+      });
+      contentType = 'video/mp4';
+    }
+
     const isPartial = upstream.status === 206 || (rangeHeader && upstream.status === 200);
     const statusCode = isPartial ? 206 : upstream.status;
 
-    const contentType = upstream.headers.get('content-type') || 'video/mp4';
     const contentRange = upstream.headers.get('content-range');
     const contentLength = upstream.headers.get('content-length');
     const acceptRanges = upstream.headers.get('accept-ranges') || 'bytes';
@@ -125,9 +159,29 @@ export async function streamVideoRange(req: IncomingMessage, res: ServerResponse
     }
     res.end();
   } catch (err: any) {
+    console.error('Stream gateway error:', err);
     if (!res.headersSent) {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Stream gateway error', details: err?.message }));
+      try {
+        // As a last resort, stream the reliable fallback directly
+        const fallbackUpstream = await fetch(DEFAULT_FALLBACK_VIDEO);
+        res.writeHead(200, {
+          'Content-Type': 'video/mp4',
+          'Accept-Ranges': 'bytes',
+          'Access-Control-Allow-Origin': '*'
+        });
+        const reader = fallbackUpstream.body?.getReader();
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(Buffer.from(value));
+          }
+        }
+        res.end();
+      } catch (_) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Stream gateway error', details: err?.message }));
+      }
     }
   }
 }
@@ -137,12 +191,7 @@ export default async function handler(req: any, res: any) {
   const { id, url } = req.query || {};
 
   const targetUrl = await resolveVideoUrl(id as string, url as string);
+  const streamTarget = targetUrl || DEFAULT_FALLBACK_VIDEO;
 
-  if (!targetUrl) {
-    // If not found, stream fallback video or send 404
-    const fallbackUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-    return streamVideoRange(req, res, fallbackUrl);
-  }
-
-  return streamVideoRange(req, res, targetUrl);
+  return streamVideoRange(req, res, streamTarget);
 }

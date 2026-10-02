@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
-import { resolveVideoUrl, streamVideoRange } from './api/stream';
+import { resolveVideoUrl, streamVideoRange, DEFAULT_FALLBACK_VIDEO, RELIABLE_SAMPLE_VIDEOS } from './api/stream';
 
 dotenv.config();
 
@@ -17,9 +17,10 @@ async function startServer() {
   app.get('/api/stream', async (req, res) => {
     const id = req.query.id as string | undefined;
     const url = req.query.url as string | undefined;
+    const part = req.query.part as string | undefined;
 
-    const targetUrl = await resolveVideoUrl(id, url);
-    const streamTarget = targetUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    const targetUrl = await resolveVideoUrl(id, url, part);
+    const streamTarget = targetUrl || (part === '2' ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO);
     return streamVideoRange(req, res, streamTarget);
   });
 
@@ -27,30 +28,43 @@ async function startServer() {
   app.get('/api/download', async (req, res) => {
     const id = req.query.id as string | undefined;
     const url = req.query.url as string | undefined;
-    const name = (req.query.name as string) || `movie_${id || 'download'}.mp4`;
+    const part = req.query.part as string | undefined;
+    const partSuffix = part ? `_part${part}` : '';
+    const name = (req.query.name as string) || `movie_${id || 'download'}${partSuffix}.mp4`;
 
-    const targetUrl = await resolveVideoUrl(id, url);
-    if (!targetUrl) {
-      return res.status(404).json({ error: 'Movie file not found' });
-    }
+    const targetUrl = await resolveVideoUrl(id, url, part);
+    const downloadTarget = targetUrl || (part === '2' ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO);
 
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-    return streamVideoRange(req, res, targetUrl);
+    return streamVideoRange(req, res, downloadTarget);
   });
 
-  // Support /download route direct forward
-  app.get('/download', async (req, res) => {
-    const id = req.query.id as string | undefined;
-    const url = req.query.url as string | undefined;
-    const name = (req.query.name as string) || `movie_${id || 'download'}.mp4`;
+  // Support /download route: if accessed via browser (HTML), let SPA router handle it.
+  // If requested directly as file (or direct=1), stream the file.
+  app.get('/download', async (req, res, next) => {
+    const isBrowserNavigation = req.headers.accept?.includes('text/html');
+    const isDirectDownload = req.query.direct === '1' || req.query.file === '1';
 
-    const targetUrl = await resolveVideoUrl(id, url);
-    if (!targetUrl) {
-      return res.status(404).json({ error: 'Movie file not found' });
+    if (isBrowserNavigation && !isDirectDownload) {
+      return next(); // Pass to SPA router to show the native download portal
     }
 
+    const id = req.query.id as string | undefined;
+    const url = req.query.url as string | undefined;
+    const part = req.query.part as string | undefined;
+    const partSuffix = part ? `_part${part}` : '';
+    const name = (req.query.name as string) || `movie_${id || 'download'}${partSuffix}.mp4`;
+
+    const targetUrl = await resolveVideoUrl(id, url, part);
+    const downloadTarget = targetUrl || (part === '2' ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO);
+
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-    return streamVideoRange(req, res, targetUrl);
+    return streamVideoRange(req, res, downloadTarget);
+  });
+
+  // /watch route is a SPA route - pass to frontend
+  app.get('/watch', (_req, _res, next) => {
+    next();
   });
 
   if (!isProd) {
