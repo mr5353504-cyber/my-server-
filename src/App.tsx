@@ -989,7 +989,7 @@ export default function App() {
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col gap-6">
         {/* Source URL Form */}
         <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form id="pipeline-form" onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-200 mb-2 flex items-center gap-2">
                 <LinkIcon className="w-4 h-4 text-indigo-400" />
@@ -1816,6 +1816,7 @@ export default function App() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
