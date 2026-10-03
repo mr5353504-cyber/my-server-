@@ -662,7 +662,13 @@ async def upload_via_telethon(bot_token: str, channel_id: str, video_path: Path,
 
     message_id = message.id
     clean_cid = str(channel_id).replace("-100", "").replace("-", "")
-    telegram_web_url = f"https://t.me/c/{clean_cid}/{message_id}"
+    channel_username = os.environ.get("TELEGRAM_CHANNEL_USERNAME", "server7766").lstrip("@").strip()
+    if channel_username:
+        telegram_web_url = f"https://t.me/{channel_username}/{message_id}"
+        embed_url = f"https://t.me/{channel_username}/{message_id}?embed=1"
+    else:
+        telegram_web_url = f"https://t.me/c/{clean_cid}/{message_id}"
+        embed_url = telegram_web_url
 
     file_id = None
     if message.media and hasattr(message.media, "document"):
@@ -672,7 +678,8 @@ async def upload_via_telethon(bot_token: str, channel_id: str, video_path: Path,
     return {
         "file_id": file_id or str(message_id),
         "message_id": message_id,
-        "channel_url": telegram_web_url
+        "channel_url": telegram_web_url,
+        "embed_url": embed_url
     }
 
 
@@ -697,12 +704,15 @@ def upload_to_telegram(bot_token: str, channel_id: str, video_path: Path, captio
                 message_id = res_json.get("message_id")
                 video_info = res_json.get("video") or res_json.get("document") or {}
                 clean_cid = str(channel_id).replace("-100", "").replace("-", "")
-                channel_url = f"https://t.me/c/{clean_cid}/{message_id}"
+                channel_username = os.environ.get("TELEGRAM_CHANNEL_USERNAME", "server7766").lstrip("@").strip()
+                channel_url = f"https://t.me/{channel_username}/{message_id}" if channel_username else f"https://t.me/c/{clean_cid}/{message_id}"
+                embed_url = f"https://t.me/{channel_username}/{message_id}?embed=1" if channel_username else channel_url
                 logger.info(f"Bot API upload successful! Message ID: {message_id}")
                 return {
                     "file_id": video_info.get("file_id") or str(message_id),
                     "message_id": message_id,
-                    "channel_url": channel_url
+                    "channel_url": channel_url,
+                    "embed_url": embed_url
                 }
         except Exception as bot_err:
             logger.warning(f"Bot API notice: {bot_err}. Switching to Telethon MTProto...")
@@ -726,11 +736,15 @@ def upload_to_telegram(bot_token: str, channel_id: str, video_path: Path, captio
     message_id = res_json.get("message_id")
     video_info = res_json.get("video") or res_json.get("document") or {}
     clean_cid = str(channel_id).replace("-100", "").replace("-", "")
+    channel_username = os.environ.get("TELEGRAM_CHANNEL_USERNAME", "server7766").lstrip("@").strip()
+    channel_url = f"https://t.me/{channel_username}/{message_id}" if channel_username else f"https://t.me/c/{clean_cid}/{message_id}"
+    embed_url = f"https://t.me/{channel_username}/{message_id}?embed=1" if channel_username else channel_url
 
     return {
         "file_id": video_info.get("file_id") or str(message_id),
         "message_id": message_id,
-        "channel_url": f"https://t.me/c/{clean_cid}/{message_id}"
+        "channel_url": channel_url,
+        "embed_url": embed_url
     }
 
 
@@ -851,6 +865,7 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
                 "direct_stream_url": part_api_stream,
                 "download_url": part_dl,
                 "telegram_cdn_url": udata.get("channel_url"),
+                "embed_url": udata.get("embed_url") or (f"{udata.get('channel_url')}?embed=1" if udata.get('channel_url') else None),
                 "message_id": udata.get("message_id"),
                 "file_id": udata.get("file_id"),
                 "quality": "1080p Ultra High Quality (Zero Re-encoding)",

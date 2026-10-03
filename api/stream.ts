@@ -48,7 +48,7 @@ export async function resolveVideoUrl(id?: string, directUrl?: string, part?: nu
               if (matchedServer.direct_stream_url && matchedServer.direct_stream_url.startsWith('http')) {
                 return matchedServer.direct_stream_url;
               }
-              if (matchedServer.telegram_cdn_url && matchedServer.telegram_cdn_url.startsWith('http') && !matchedServer.telegram_cdn_url.includes('t.me')) {
+              if (matchedServer.telegram_cdn_url && matchedServer.telegram_cdn_url.startsWith('http')) {
                 return matchedServer.telegram_cdn_url;
               }
             }

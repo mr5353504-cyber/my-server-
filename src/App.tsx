@@ -124,9 +124,10 @@ export default function App() {
     downloadUrl?: string;
     overview?: string;
     telegramChannelUrl?: string;
-    serverSources?: { label: string; url: string; telegramUrl?: string; isTelegram?: boolean; partNumber?: number }[];
-    parts?: { partIndex: number; title: string; url: string; telegramUrl?: string; duration?: number }[];
+    serverSources?: { label: string; url: string; telegramUrl?: string; embedUrl?: string; isTelegram?: boolean; partNumber?: number }[];
+    parts?: { partIndex: number; title: string; url: string; telegramUrl?: string; embedUrl?: string; duration?: number }[];
   } | null>(null);
+  const [playerMode, setPlayerMode] = useState<'embed' | 'player'>('embed');
   const [activeVideoSrc, setActiveVideoSrc] = useState<string>('');
   const [currentPartIndex, setCurrentPartIndex] = useState<number>(0);
   const [videoPlaybackError, setVideoPlaybackError] = useState<string | null>(null);
@@ -194,7 +195,7 @@ export default function App() {
   const resolveStreamCandidates = async (id: string, directUrl?: string | null) => {
     setIsResolvingStream(true);
     setVideoPlaybackError(null);
-    const candidates: { label: string; url: string; telegramUrl?: string; isTelegram?: boolean; partNumber?: number }[] = [];
+    const candidates: { label: string; url: string; telegramUrl?: string; embedUrl?: string; isTelegram?: boolean; partNumber?: number }[] = [];
 
     // 1. Fast Local / Proxy Range Stream Gateway (Guarantees HTTP Range & CORS support)
     candidates.push({
@@ -242,10 +243,20 @@ export default function App() {
           for (let idx = 0; idx < servers.length; idx++) {
             const s = servers[idx];
             if (s && s.telegram_cdn_url && s.telegram_cdn_url.startsWith('http')) {
+              let msgId = s.message_id;
+              if (!msgId) {
+                const match = s.telegram_cdn_url.match(/\/(\d+)$/);
+                if (match) msgId = match[1];
+              }
+              const publicChannel = APP_CONFIG.TELEGRAM_CHANNEL_USERNAME || 'server7766';
+              const publicUrl = msgId ? `https://t.me/${publicChannel}/${msgId}` : s.telegram_cdn_url;
+              const embed = s.embed_url || (msgId ? `https://t.me/${publicChannel}/${msgId}?embed=1` : `https://t.me/${publicChannel}?embed=1`);
+
               candidates.push({
                 label: s.name ? `${s.name} (Telegram Channel)` : `Part ${idx + 1} (Telegram Channel)`,
                 url: s.telegram_cdn_url,
-                telegramUrl: s.telegram_cdn_url,
+                telegramUrl: publicUrl,
+                embedUrl: embed,
                 isTelegram: true,
                 partNumber: s.part_number || (idx + 1)
               });
@@ -274,8 +285,8 @@ export default function App() {
     setActiveVideoSrc(initialSource);
 
     // Identify if the stream has multiple parts
-    const channelId = APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '');
-    let partsList: { partIndex: number; title: string; url: string; telegramUrl?: string }[] = [];
+    const publicChannel = APP_CONFIG.TELEGRAM_CHANNEL_USERNAME || 'server7766';
+    let partsList: { partIndex: number; title: string; url: string; telegramUrl?: string; embedUrl?: string }[] = [];
     const tgCandidates = candidates.filter(c => c.isTelegram || c.telegramUrl);
 
     if (tgCandidates.length > 0) {
@@ -283,15 +294,16 @@ export default function App() {
         partIndex: idx,
         title: `Part ${idx + 1}`,
         url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=${idx + 1}`,
-        telegramUrl: c.telegramUrl || c.url
+        telegramUrl: c.telegramUrl || `https://t.me/${publicChannel}`,
+        embedUrl: c.embedUrl || `https://t.me/${publicChannel}?embed=1`
       }));
     } else {
       // Clean 4-part structure for large cinema media
       partsList = [
-        { partIndex: 0, title: 'Part 1', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=1`, telegramUrl: `https://t.me/c/${channelId}` },
-        { partIndex: 1, title: 'Part 2', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=2`, telegramUrl: `https://t.me/c/${channelId}` },
-        { partIndex: 2, title: 'Part 3', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=3`, telegramUrl: `https://t.me/c/${channelId}` },
-        { partIndex: 3, title: 'Part 4', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=4`, telegramUrl: `https://t.me/c/${channelId}` }
+        { partIndex: 0, title: 'Part 1', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=1`, telegramUrl: `https://t.me/${publicChannel}`, embedUrl: `https://t.me/${publicChannel}?embed=1` },
+        { partIndex: 1, title: 'Part 2', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=2`, telegramUrl: `https://t.me/${publicChannel}`, embedUrl: `https://t.me/${publicChannel}?embed=1` },
+        { partIndex: 2, title: 'Part 3', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=3`, telegramUrl: `https://t.me/${publicChannel}`, embedUrl: `https://t.me/${publicChannel}?embed=1` },
+        { partIndex: 3, title: 'Part 4', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=4`, telegramUrl: `https://t.me/${publicChannel}`, embedUrl: `https://t.me/${publicChannel}?embed=1` }
       ];
     }
 
@@ -303,7 +315,7 @@ export default function App() {
       overview: '1080p single seamless cinema stream played natively on this website without Telegram app redirects.',
       serverSources: candidates,
       parts: partsList,
-      telegramChannelUrl: partsList[0]?.telegramUrl || `https://t.me/c/${channelId}`
+      telegramChannelUrl: `https://t.me/${publicChannel}`
     });
     setCinemaPlayerOpen(true);
   };
@@ -1554,60 +1566,94 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => setCinemaPlayerOpen(false)}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
-              title="Close Player"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl">
+                <button
+                  onClick={() => setPlayerMode('embed')}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                    playerMode === 'embed'
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  📺 Web Player (Embed)
+                </button>
+                <button
+                  onClick={() => setPlayerMode('player')}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                    playerMode === 'player'
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🎬 Cinema Hub
+                </button>
+              </div>
+
+              <button
+                onClick={() => setCinemaPlayerOpen(false)}
+                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
+                title="Close Player"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Video Container */}
           <div className="max-w-5xl w-full mx-auto my-auto py-4">
             <div className="relative aspect-video w-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center">
-              <video
-                key={activeVideoSrc}
-                ref={videoPlayerRef}
-                controls
-                autoPlay
-                playsInline
-                className="w-full h-full object-contain"
-                src={activeVideoSrc}
-                onEnded={() => {
-                  // Seamless Multi-Part Auto-Merge: Transition to next part without user intervention
-                  if (cinemaMovieData?.parts && cinemaMovieData.parts.length > 1) {
-                    const nextIdx = currentPartIndex + 1;
-                    if (nextIdx < cinemaMovieData.parts.length) {
-                      const nextPart = cinemaMovieData.parts[nextIdx];
-                      setCurrentPartIndex(nextIdx);
-                      setActiveVideoSrc(nextPart.url);
-                      setVideoPlaybackError(null);
-                      showToast(
-                        'loading',
-                        'Seamless Transition',
-                        `Seamlessly playing next sequence (${nextIdx + 1}/${cinemaMovieData.parts.length}). Enjoy uninterrupted watching!`
-                      );
-                      setTimeout(() => {
-                        videoPlayerRef.current?.play().catch(() => {});
-                      }, 200);
+              {playerMode === 'embed' ? (
+                <iframe
+                  key={`embed-${currentPartIndex}-${cinemaMovieData?.parts?.[currentPartIndex]?.embedUrl || ''}`}
+                  src={cinemaMovieData?.parts?.[currentPartIndex]?.embedUrl || `https://t.me/${APP_CONFIG.TELEGRAM_CHANNEL_USERNAME}?embed=1`}
+                  className="w-full h-full border-0 rounded-2xl bg-slate-950"
+                  allowFullScreen
+                  allow="autoplay; encrypted-media; fullscreen"
+                  title="Telegram Web Cinema Player"
+                />
+              ) : (
+                <video
+                  key={activeVideoSrc}
+                  ref={videoPlayerRef}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-contain"
+                  src={activeVideoSrc}
+                  onEnded={() => {
+                    // Seamless Multi-Part Auto-Merge: Transition to next part without user intervention
+                    if (cinemaMovieData?.parts && cinemaMovieData.parts.length > 1) {
+                      const nextIdx = currentPartIndex + 1;
+                      if (nextIdx < cinemaMovieData.parts.length) {
+                        const nextPart = cinemaMovieData.parts[nextIdx];
+                        setCurrentPartIndex(nextIdx);
+                        setActiveVideoSrc(nextPart.url);
+                        setVideoPlaybackError(null);
+                        showToast(
+                          'loading',
+                          'Seamless Transition',
+                          `Seamlessly playing next sequence (${nextIdx + 1}/${cinemaMovieData.parts.length}). Enjoy uninterrupted watching!`
+                        );
+                        setTimeout(() => {
+                          videoPlayerRef.current?.play().catch(() => {});
+                        }, 200);
+                      }
                     }
-                  }
-                }}
-                onError={() => {
-                  setVideoPlaybackError(
-                    'Telegram Cloud Stream'
-                  );
-                }}
-                onPlay={() => {
-                  setVideoPlaybackError(null);
-                }}
-              >
-                Your browser does not support HTML5 video playback.
-              </video>
+                  }}
+                  onError={() => {
+                    setVideoPlaybackError('Telegram Cloud Stream');
+                  }}
+                  onPlay={() => {
+                    setVideoPlaybackError(null);
+                  }}
+                >
+                  Your browser does not support HTML5 video playback.
+                </video>
+              )}
 
               {/* Seamless Multi-Part Status Indicator */}
-              {cinemaMovieData?.parts && cinemaMovieData.parts.length > 1 && (
+              {cinemaMovieData?.parts && cinemaMovieData.parts.length > 1 && playerMode === 'player' && (
                 <div className="absolute top-3 left-3 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/60 flex items-center gap-2 pointer-events-none text-xs z-10">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span className="text-white font-medium">Telegram Fast Stream</span>
@@ -1617,8 +1663,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* Elegant Telegram Cinema Hub Overlay */}
-              {videoPlaybackError && (
+              {/* Elegant Telegram Cinema Hub Overlay (In player mode if video fails) */}
+              {playerMode === 'player' && videoPlaybackError && (
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
                   <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-3 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
                     <Tv className="w-8 h-8" />
@@ -1631,14 +1677,22 @@ export default function App() {
                   </p>
 
                   <div className="flex flex-wrap items-center justify-center gap-3">
-                    <a
-                      href={cinemaMovieData?.parts?.[currentPartIndex]?.telegramUrl || cinemaMovieData?.telegramChannelUrl || `https://t.me/c/${APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '')}`}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      onClick={() => setPlayerMode('embed')}
                       className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95"
                     >
-                      <Send className="w-4 h-4 fill-current" />
-                      <span>Play {cinemaMovieData?.parts?.[currentPartIndex]?.title || `Part ${currentPartIndex + 1}`} on Telegram</span>
+                      <Tv className="w-4 h-4" />
+                      <span>Watch in Web Player (Embed)</span>
+                    </button>
+
+                    <a
+                      href={cinemaMovieData?.parts?.[currentPartIndex]?.telegramUrl || cinemaMovieData?.telegramChannelUrl || `https://t.me/${APP_CONFIG.TELEGRAM_CHANNEL_USERNAME}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all border border-slate-700 hover:scale-105 active:scale-95"
+                    >
+                      <Send className="w-4 h-4 fill-current text-indigo-400" />
+                      <span>Open on Telegram</span>
                     </a>
 
                     <button

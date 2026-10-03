@@ -38,5 +38,6 @@ export const APP_CONFIG = {
     return DEFAULT_INTERNAL_PAT;
   },
   TELEGRAM_CHANNEL_ID: '-1004408587176',
+  TELEGRAM_CHANNEL_USERNAME: 'server7766',
   SUPABASE_URL: 'https://tmomuyxckjhlsjfbzfvz.supabase.co',
 };
