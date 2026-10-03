@@ -20,8 +20,7 @@ async function startServer() {
     const part = req.query.part as string | undefined;
 
     const targetUrl = await resolveVideoUrl(id, url, part);
-    const streamTarget = targetUrl || (part === '2' ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO);
-    return streamVideoRange(req, res, streamTarget);
+    return streamVideoRange(req, res, targetUrl);
   });
 
   // Direct download endpoint with Content-Disposition
@@ -33,10 +32,8 @@ async function startServer() {
     const name = (req.query.name as string) || `movie_${id || 'download'}${partSuffix}.mp4`;
 
     const targetUrl = await resolveVideoUrl(id, url, part);
-    const downloadTarget = targetUrl || (part === '2' ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO);
-
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-    return streamVideoRange(req, res, downloadTarget);
+    return streamVideoRange(req, res, targetUrl);
   });
 
   // Support /download route: if accessed via browser (HTML), let SPA router handle it.
@@ -56,10 +53,8 @@ async function startServer() {
     const name = (req.query.name as string) || `movie_${id || 'download'}${partSuffix}.mp4`;
 
     const targetUrl = await resolveVideoUrl(id, url, part);
-    const downloadTarget = targetUrl || (part === '2' ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO);
-
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-    return streamVideoRange(req, res, downloadTarget);
+    return streamVideoRange(req, res, targetUrl);
   });
 
   // /watch route is a SPA route - pass to frontend
