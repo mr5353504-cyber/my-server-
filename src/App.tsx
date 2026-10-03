@@ -143,7 +143,7 @@ export default function App() {
 
   const openDownloadModal = (id?: string) => {
     const effectiveId = id || tmdbIdInput.trim() || '157336';
-    const channelId = APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '');
+    const publicChannel = APP_CONFIG.TELEGRAM_CHANNEL_USERNAME || 'server7766';
     const cleanOrigin = window.location.origin;
 
     let partsToUse = cinemaMovieData?.parts && cinemaMovieData.parts.length > 0
@@ -151,36 +151,39 @@ export default function App() {
           partIndex: idx,
           title: p.title || `Part ${idx + 1}`,
           downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=${idx + 1}`,
-          telegramUrl: p.telegramUrl || `https://t.me/c/${channelId}`,
+          telegramUrl: p.telegramUrl || `https://t.me/${publicChannel}`,
           sizeStr: '1.80 GB (1080p Original)'
         }))
-      : [
+      : effectiveId === '157336'
+      ? [
           {
             partIndex: 0,
-            title: 'Part 1 (First Half)',
-            downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=1`,
-            telegramUrl: `https://t.me/c/${channelId}`,
+            title: 'Part 1 (Interstellar - 1080p Original)',
+            downloadUrl: `${cleanOrigin}/api/download?id=157336&part=1`,
+            telegramUrl: `https://t.me/${publicChannel}/38`,
             sizeStr: '1.80 GB (1080p Original)'
           },
           {
             partIndex: 1,
-            title: 'Part 2 (Second Half)',
+            title: 'Part 2 (Interstellar - 1080p Original)',
+            downloadUrl: `${cleanOrigin}/api/download?id=157336&part=2`,
+            telegramUrl: `https://t.me/${publicChannel}/40`,
+            sizeStr: '1.80 GB (1080p Original)'
+          }
+        ]
+      : [
+          {
+            partIndex: 0,
+            title: 'Part 1',
+            downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=1`,
+            telegramUrl: `https://t.me/${publicChannel}`,
+            sizeStr: '1.80 GB (1080p Original)'
+          },
+          {
+            partIndex: 1,
+            title: 'Part 2',
             downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=2`,
-            telegramUrl: `https://t.me/c/${channelId}`,
-            sizeStr: '1.80 GB (1080p Original)'
-          },
-          {
-            partIndex: 2,
-            title: 'Part 3',
-            downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=3`,
-            telegramUrl: `https://t.me/c/${channelId}`,
-            sizeStr: '1.80 GB (1080p Original)'
-          },
-          {
-            partIndex: 3,
-            title: 'Part 4',
-            downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=4`,
-            telegramUrl: `https://t.me/c/${channelId}`,
+            telegramUrl: `https://t.me/${publicChannel}`,
             sizeStr: '1.80 GB (1080p Original)'
           }
         ];
@@ -297,13 +300,29 @@ export default function App() {
         telegramUrl: c.telegramUrl || `https://t.me/${publicChannel}`,
         embedUrl: c.embedUrl || `https://t.me/${publicChannel}?embed=1`
       }));
-    } else {
-      // Clean 4-part structure for large cinema media
+    } else if (effectiveId === '157336') {
+      // Interstellar 1080p verified on channel server7766
       partsList = [
-        { partIndex: 0, title: 'Part 1', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=1`, telegramUrl: `https://t.me/${publicChannel}`, embedUrl: `https://t.me/${publicChannel}?embed=1` },
-        { partIndex: 1, title: 'Part 2', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=2`, telegramUrl: `https://t.me/${publicChannel}`, embedUrl: `https://t.me/${publicChannel}?embed=1` },
-        { partIndex: 2, title: 'Part 3', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=3`, telegramUrl: `https://t.me/${publicChannel}`, embedUrl: `https://t.me/${publicChannel}?embed=1` },
-        { partIndex: 3, title: 'Part 4', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=4`, telegramUrl: `https://t.me/${publicChannel}`, embedUrl: `https://t.me/${publicChannel}?embed=1` }
+        {
+          partIndex: 0,
+          title: 'Part 1 (Interstellar - 1080p Original)',
+          url: `/api/stream?id=157336&part=1`,
+          telegramUrl: `https://t.me/${publicChannel}/38`,
+          embedUrl: `https://t.me/${publicChannel}/38?embed=1`
+        },
+        {
+          partIndex: 1,
+          title: 'Part 2 (Interstellar - 1080p Original)',
+          url: `/api/stream?id=157336&part=2`,
+          telegramUrl: `https://t.me/${publicChannel}/40`,
+          embedUrl: `https://t.me/${publicChannel}/40?embed=1`
+        }
+      ];
+    } else {
+      // Clean 2-part structure for large cinema media
+      partsList = [
+        { partIndex: 0, title: 'Part 1', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=1`, telegramUrl: `https://t.me/${publicChannel}` },
+        { partIndex: 1, title: 'Part 2', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=2`, telegramUrl: `https://t.me/${publicChannel}` }
       ];
     }
 
@@ -1604,14 +1623,49 @@ export default function App() {
           <div className="max-w-5xl w-full mx-auto my-auto py-4">
             <div className="relative aspect-video w-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center">
               {playerMode === 'embed' ? (
-                <iframe
-                  key={`embed-${currentPartIndex}-${cinemaMovieData?.parts?.[currentPartIndex]?.embedUrl || ''}`}
-                  src={cinemaMovieData?.parts?.[currentPartIndex]?.embedUrl || `https://t.me/${APP_CONFIG.TELEGRAM_CHANNEL_USERNAME}?embed=1`}
-                  className="w-full h-full border-0 rounded-2xl bg-slate-950"
-                  allowFullScreen
-                  allow="autoplay; encrypted-media; fullscreen"
-                  title="Telegram Web Cinema Player"
-                />
+                (() => {
+                  const activePart = cinemaMovieData?.parts?.[currentPartIndex];
+                  const embedSrc = activePart?.embedUrl;
+                  const hasSpecificPost = Boolean(embedSrc && /\/\d+\?embed=1/.test(embedSrc));
+
+                  if (!hasSpecificPost) {
+                    return (
+                      <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+                        <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-3 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
+                          <Tv className="w-8 h-8" />
+                        </div>
+                        <h4 className="text-lg font-bold text-white mb-1">
+                          {activePart?.title || `Part ${currentPartIndex + 1}`} &bull; Telegram Cinema Stream
+                        </h4>
+                        <p className="text-xs text-slate-300 max-w-lg mb-5 leading-relaxed">
+                          মুভিটি প্রসেস হয়ে টেলিগ্রাম ক্লাউড স্টোরেজে আপলোড হয়েছে। নিচে ক্লিক করে টেলিগ্রাম অ্যাপ অথবা ব্রাউজারে সম্পূর্ণ ফুল-স্পিডে ও বিজ্ঞাপনহীনভাবে সরাসরি দেখুন।
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-3">
+                          <a
+                            href={activePart?.telegramUrl || `https://t.me/${APP_CONFIG.TELEGRAM_CHANNEL_USERNAME}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95"
+                          >
+                            <Send className="w-4 h-4 fill-current" />
+                            <span>Open on Telegram (@{APP_CONFIG.TELEGRAM_CHANNEL_USERNAME})</span>
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <iframe
+                      key={`embed-${currentPartIndex}-${embedSrc}`}
+                      src={embedSrc}
+                      className="w-full h-full border-0 rounded-2xl bg-slate-950"
+                      allowFullScreen
+                      allow="autoplay; encrypted-media; fullscreen"
+                      title="Telegram Web Cinema Player"
+                    />
+                  );
+                })()
               ) : (
                 <video
                   key={activeVideoSrc}
