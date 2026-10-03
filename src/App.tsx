@@ -145,24 +145,48 @@ export default function App() {
     const channelId = APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '');
     const cleanOrigin = window.location.origin;
 
+    let partsToUse = cinemaMovieData?.parts && cinemaMovieData.parts.length > 0
+      ? cinemaMovieData.parts.map((p, idx) => ({
+          partIndex: idx,
+          title: p.title || `Part ${idx + 1}`,
+          downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=${idx + 1}`,
+          telegramUrl: p.telegramUrl || `https://t.me/c/${channelId}`,
+          sizeStr: '1.80 GB (1080p Original)'
+        }))
+      : [
+          {
+            partIndex: 0,
+            title: 'Part 1 (First Half)',
+            downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=1`,
+            telegramUrl: `https://t.me/c/${channelId}`,
+            sizeStr: '1.80 GB (1080p Original)'
+          },
+          {
+            partIndex: 1,
+            title: 'Part 2 (Second Half)',
+            downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=2`,
+            telegramUrl: `https://t.me/c/${channelId}`,
+            sizeStr: '1.80 GB (1080p Original)'
+          },
+          {
+            partIndex: 2,
+            title: 'Part 3',
+            downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=3`,
+            telegramUrl: `https://t.me/c/${channelId}`,
+            sizeStr: '1.80 GB (1080p Original)'
+          },
+          {
+            partIndex: 3,
+            title: 'Part 4',
+            downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=4`,
+            telegramUrl: `https://t.me/c/${channelId}`,
+            sizeStr: '1.80 GB (1080p Original)'
+          }
+        ];
+
     setDownloadModalData({
       id: effectiveId,
-      parts: [
-        {
-          partIndex: 0,
-          title: 'Part 1 (First Half)',
-          downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=1`,
-          telegramUrl: `https://t.me/c/${channelId}`,
-          sizeStr: '1.80 GB (1080p Original)'
-        },
-        {
-          partIndex: 1,
-          title: 'Part 2 (Second Half)',
-          downloadUrl: `${cleanOrigin}/api/download?id=${effectiveId}&part=2`,
-          telegramUrl: `https://t.me/c/${channelId}`,
-          sizeStr: '1.20 GB (1080p Original)'
-        }
-      ]
+      parts: partsToUse
     });
     setDownloadModalOpen(true);
   };
@@ -262,10 +286,12 @@ export default function App() {
         telegramUrl: c.telegramUrl || c.url
       }));
     } else {
-      // Clean 2-part structure for large movies
+      // Clean 4-part structure for large cinema media
       partsList = [
-        { partIndex: 0, title: 'Part 1 (First Half)', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=1`, telegramUrl: `https://t.me/c/${channelId}` },
-        { partIndex: 1, title: 'Part 2 (Second Half)', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=2`, telegramUrl: `https://t.me/c/${channelId}` }
+        { partIndex: 0, title: 'Part 1', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=1`, telegramUrl: `https://t.me/c/${channelId}` },
+        { partIndex: 1, title: 'Part 2', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=2`, telegramUrl: `https://t.me/c/${channelId}` },
+        { partIndex: 2, title: 'Part 3', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=3`, telegramUrl: `https://t.me/c/${channelId}` },
+        { partIndex: 3, title: 'Part 4', url: `/api/stream?id=${encodeURIComponent(effectiveId)}&part=4`, telegramUrl: `https://t.me/c/${channelId}` }
       ];
     }
 
@@ -1520,11 +1546,11 @@ export default function App() {
                   {cinemaMovieData?.title || `Movie #${cinemaMovieData?.id || '157336'}`}
                 </h3>
                 <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                  <span className="text-emerald-400 font-medium">1080p Single-File Stream</span>
+                  <span className="text-emerald-400 font-medium">1080p Ultra HD</span>
                   <span>&bull;</span>
-                  <span>Zero Telegram Redirect</span>
+                  <span className="text-indigo-400 font-medium">Telegram Cloud Fast Stream</span>
                   <span>&bull;</span>
-                  <span>Native Website Cinema Player</span>
+                  <span>Zero Buffering &bull; Multi-Part Cinema</span>
                 </div>
               </div>
             </div>
@@ -1570,7 +1596,7 @@ export default function App() {
                 }}
                 onError={() => {
                   setVideoPlaybackError(
-                    'Direct stream did not respond or browser codec could not decode the remote stream URL. You can select another server below or play the high-res test stream.'
+                    'Telegram Cloud Stream'
                   );
                 }}
                 onPlay={() => {
@@ -1582,49 +1608,46 @@ export default function App() {
 
               {/* Seamless Multi-Part Status Indicator */}
               {cinemaMovieData?.parts && cinemaMovieData.parts.length > 1 && (
-                <div className="absolute top-3 left-3 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/60 flex items-center gap-2 pointer-events-none text-xs">
+                <div className="absolute top-3 left-3 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/60 flex items-center gap-2 pointer-events-none text-xs z-10">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-white font-medium">Seamless Unified Stream</span>
-                  <span className="text-slate-400 text-[10px]">Auto-Merged ({cinemaMovieData.parts.length} parts)</span>
+                  <span className="text-white font-medium">Telegram Fast Stream</span>
+                  <span className="text-slate-400 text-[10px]">
+                    {cinemaMovieData.parts[currentPartIndex]?.title || `Part ${currentPartIndex + 1}`} of {cinemaMovieData.parts.length}
+                  </span>
                 </div>
               )}
 
-              {/* Error & Fallback Banner */}
+              {/* Elegant Telegram Cinema Hub Overlay */}
               {videoPlaybackError && (
-                <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-3">
-                    <Tv className="w-6 h-6" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+                  <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-3 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
+                    <Tv className="w-8 h-8" />
                   </div>
-                  <h4 className="text-base font-semibold text-white mb-1">Direct Media Stream Notice</h4>
-                  <p className="text-xs text-slate-300 max-w-md mb-4 leading-relaxed">
-                    ভিডিও স্ট্রিমটি সরাসরি লোড হতে পারছে না (মূল লিঙ্কে Cloudflare/বট প্রতিরোধ সুরক্ষা থাকতে পারে)। আপনার ফাইলটি টেলিগ্রাম চ্যানেলে সুরক্ষিত থাকলে নিচের বাটনে ক্লিক করে সরাসরি দেখতে পারেন।
+                  <h4 className="text-lg font-bold text-white mb-1">
+                    {cinemaMovieData?.parts?.[currentPartIndex]?.title || `Part ${currentPartIndex + 1}`} &bull; 1080p Ultra High Quality
+                  </h4>
+                  <p className="text-xs text-slate-300 max-w-lg mb-5 leading-relaxed">
+                    মুভিটি টেলিগ্রাম ক্লাউড স্টোরেজে সুরক্ষিত আছে। নিচে ১ ক্লিকে টেলিগ্রাম অ্যাপ অথবা ব্রাউজারে সম্পূর্ণ ফুল-স্পিডে ও বিজ্ঞাপনহীনভাবে প্লে করুন বা ডাউনলোড করুন।
                   </p>
-                  <div className="flex flex-wrap items-center justify-center gap-2">
+
+                  <div className="flex flex-wrap items-center justify-center gap-3">
                     <a
-                      href={cinemaMovieData?.telegramChannelUrl || `https://t.me/c/${APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '')}`}
+                      href={cinemaMovieData?.parts?.[currentPartIndex]?.telegramUrl || cinemaMovieData?.telegramChannelUrl || `https://t.me/c/${APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '')}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-lg shadow-indigo-600/20"
+                      className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95"
                     >
-                      <Send className="w-3.5 h-3.5 fill-current" />
-                      <span>Open in Telegram Channel</span>
+                      <Send className="w-4 h-4 fill-current" />
+                      <span>Play {cinemaMovieData?.parts?.[currentPartIndex]?.title || `Part ${currentPartIndex + 1}`} on Telegram</span>
                     </a>
 
-                    {cinemaMovieData?.serverSources && cinemaMovieData.serverSources.length > 1 && (
-                      <button
-                        onClick={() => {
-                          const nextSource = cinemaMovieData.serverSources?.find(s => s.url !== activeVideoSrc)?.url;
-                          if (nextSource) {
-                            setActiveVideoSrc(nextSource);
-                            setVideoPlaybackError(null);
-                          }
-                        }}
-                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Switch Server / Part</span>
-                      </button>
-                    )}
+                    <button
+                      onClick={() => openDownloadModal(cinemaMovieData?.id)}
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shadow-xl shadow-emerald-600/30 hover:scale-105 active:scale-95"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download {cinemaMovieData?.parts?.[currentPartIndex]?.title || `Part ${currentPartIndex + 1}`}</span>
+                    </button>
                   </div>
                 </div>
               )}

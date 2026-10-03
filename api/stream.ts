@@ -93,6 +93,15 @@ export async function streamVideoRange(req: IncomingMessage, res: ServerResponse
     return;
   }
 
+  // If videoUrl is a Telegram link, redirect directly to Telegram
+  if (videoUrl.includes('t.me')) {
+    res.statusCode = 302;
+    res.setHeader('Location', videoUrl);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.end();
+    return;
+  }
+
   const rangeHeader = req.headers['range'] as string | undefined;
 
   const headers: Record<string, string> = {
