@@ -676,6 +676,14 @@ export default function App() {
       console.warn('Session load notice:', e);
     }
 
+    // Purge any stale revoked token from previous sessions
+    try {
+      const stored = localStorage.getItem('APP_GITHUB_PAT');
+      if (stored && stored.includes('ghp_nzw4')) {
+        localStorage.removeItem('APP_GITHUB_PAT');
+      }
+    } catch (_) {}
+
     // Fetch initial history
     fetchHistory();
 
