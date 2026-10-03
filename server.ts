@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
-import { resolveVideoUrl, streamVideoRange, DEFAULT_FALLBACK_VIDEO, RELIABLE_SAMPLE_VIDEOS } from './api/stream';
+import { resolveVideoUrl, streamVideoRange } from './api/stream';
 
 dotenv.config();
 
