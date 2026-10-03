@@ -327,13 +327,14 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
     except Exception as aria_err:
         logger.warning(f"Direct Aria2c notice: {aria_err}")
 
-    # Fallback yt-dlp with aria2c
+    # Fallback yt-dlp with Chrome impersonation & aria2c
     try:
-        logger.info("Engaging yt-dlp with aria2c 16-threaded downloader...")
+        logger.info("Engaging yt-dlp with Chrome impersonation & aria2c 16-threaded downloader...")
         ytdlp_cmd = [
             "yt-dlp",
             "--no-check-certificates",
             "--no-playlist",
+            "--impersonate", "chrome",
             "--external-downloader", "aria2c",
             "--external-downloader-args", "aria2c:-x 16 -s 16 --max-connection-per-server=16 -k 1M --file-allocation=none --check-certificate=false",
             "--format", "bestvideo+bestaudio/best",
@@ -347,6 +348,23 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
             return target_file
     except Exception as ytdlp_err:
         logger.warning(f"yt-dlp notice: {ytdlp_err}")
+
+    # Fallback: curl_cffi TLS impersonation for Cloudflare / anti-bot protected endpoints
+    if not target_file.exists() or target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:
+        try:
+            from curl_cffi import requests as cffi_requests
+            logger.info("Engaging curl_cffi with Chrome120 TLS fingerprint for anti-bot bypass...")
+            with cffi_requests.get(effective_url, impersonate="chrome120", stream=True, timeout=180, allow_redirects=True, verify=False) as cffi_resp:
+                if cffi_resp.status_code == 200:
+                    with open(target_file, "wb") as f_cffi:
+                        for chunk in cffi_resp.iter_content(chunk_size=16 * 1024 * 1024):
+                            if chunk:
+                                f_cffi.write(chunk)
+                    if target_file.exists() and target_file.stat().st_size >= MIN_VALID_FILE_SIZE_BYTES:
+                        logger.info("curl_cffi Chrome impersonation download succeeded!")
+                        return target_file
+        except Exception as cffi_err:
+            logger.warning(f"curl_cffi bypass notice: {cffi_err}")
 
     # Fallback direct HTTP chunk stream
     if not target_file.exists() or target_file.stat().st_size < MIN_VALID_FILE_SIZE_BYTES:
