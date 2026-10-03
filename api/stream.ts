@@ -90,12 +90,19 @@ export async function resolveVideoUrl(id?: string, directUrl?: string, part?: nu
     }
   }
 
-  // Multi-part deterministic fallback stream
-  return targetPartNum === 2 ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO;
+  // Multi-part deterministic fallback stream - return null so player shows honest status
+  return null;
 }
 
 // Lightweight Range-Request Forwarder for Vercel Serverless Functions
-export async function streamVideoRange(req: IncomingMessage, res: ServerResponse, videoUrl: string) {
+export async function streamVideoRange(req: IncomingMessage, res: ServerResponse, videoUrl: string | null) {
+  if (!videoUrl) {
+    res.statusCode = 404;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'Video stream is not available or processing incomplete.' }));
+    return;
+  }
+
   const rangeHeader = req.headers['range'] as string | undefined;
 
   const headers: Record<string, string> = {
@@ -115,14 +122,12 @@ export async function streamVideoRange(req: IncomingMessage, res: ServerResponse
 
     let contentType = upstream.headers.get('content-type') || 'video/mp4';
 
-    // If upstream returns an error or non-video content (e.g. 403 XML or 404 HTML), switch to reliable fallback
+    // If upstream returns an error or non-video content, return 404 with clear status
     if (!upstream.ok || contentType.includes('xml') || contentType.includes('html')) {
-      console.warn(`Upstream returned non-video response (${upstream.status}, ${contentType}). Serving reliable fallback stream.`);
-      upstream = await fetch(DEFAULT_FALLBACK_VIDEO, {
-        method: 'GET',
-        headers
-      });
-      contentType = 'video/mp4';
+      res.statusCode = upstream.status >= 400 ? upstream.status : 404;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: `Upstream media source returned ${upstream.status} ${upstream.statusText}` }));
+      return;
     }
 
     const isPartial = upstream.status === 206 || (rangeHeader && upstream.status === 200);
