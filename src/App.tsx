@@ -2208,6 +2208,25 @@ export default function App() {
               )}
             </div>
 
+            {/* Direct Watch Guideline Banner for Large Files */}
+            <div className="mt-3 p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-indigo-200">
+              <div className="flex items-center gap-2.5">
+                <Send className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                <span className="leading-relaxed">
+                  💡 টেলিগ্রামের নিয়মানুযায়ী ২০ মেগাবাইটের বেশি বড় ভিডিওর ক্ষেত্রে স্ক্রিনে <strong>"Media is too big"</strong> আসে। মুভিটি প্লে করতে প্লেয়ারের মাঝখানের <strong>"VIEW IN TELEGRAM"</strong> বোতামে চাপ দিন অথবা পাশের বোতামে চাপ দিন—সরাসরি বিজ্ঞাপনহীন ফুল-এইচডি কোয়ালিটিতে চলবে!
+                </span>
+              </div>
+              <a
+                href={cinemaMovieData?.parts?.[currentPartIndex]?.telegramUrl || `https://t.me/${APP_CONFIG.TELEGRAM_CHANNEL_USERNAME}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium whitespace-nowrap text-xs shadow-md shadow-indigo-600/30 flex items-center justify-center gap-1.5 transition-all hover:scale-105 active:scale-95 flex-shrink-0"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>সরাসরি প্লে করুন ({cinemaMovieData?.parts?.[currentPartIndex]?.title || `Part ${currentPartIndex + 1}`})</span>
+              </a>
+            </div>
+
             {/* Multi-Part Switcher Bar (1 Single Link For Both Parts) */}
             {cinemaMovieData?.parts && cinemaMovieData.parts.length > 0 && (
               <div className="mt-3 p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
