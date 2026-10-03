@@ -1,14 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 
-// Ultra-reliable public 1080p sample streams with CORS support
-export const RELIABLE_SAMPLE_VIDEOS = [
-  'https://vjs.zencdn.net/v/oceans.mp4',
-  'https://media.w3.org/2010/05/sintel/trailer.mp4',
-  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'
-];
-
-export const DEFAULT_FALLBACK_VIDEO = RELIABLE_SAMPLE_VIDEOS[0];
-
 // Helper to resolve stream URL from ID, direct URL, and part index
 export async function resolveVideoUrl(id?: string, directUrl?: string, part?: number | string): Promise<string | null> {
   if (directUrl && directUrl.startsWith('http') && !directUrl.includes('/watch?id=') && !directUrl.includes('/download?id=')) {
@@ -18,7 +9,7 @@ export async function resolveVideoUrl(id?: string, directUrl?: string, part?: nu
   const targetPartNum = part ? parseInt(String(part), 10) : 1;
 
   if (!id) {
-    return targetPartNum === 2 ? RELIABLE_SAMPLE_VIDEOS[1] : DEFAULT_FALLBACK_VIDEO;
+    return null;
   }
 
   // 1. Try Supabase lookup
@@ -90,7 +81,6 @@ export async function resolveVideoUrl(id?: string, directUrl?: string, part?: nu
     }
   }
 
-  // Multi-part deterministic fallback stream - return null so player shows honest status
   return null;
 }
 
@@ -166,37 +156,27 @@ export async function streamVideoRange(req: IncomingMessage, res: ServerResponse
   } catch (err: any) {
     console.error('Stream gateway error:', err);
     if (!res.headersSent) {
-      try {
-        // As a last resort, stream the reliable fallback directly
-        const fallbackUpstream = await fetch(DEFAULT_FALLBACK_VIDEO);
-        res.writeHead(200, {
-          'Content-Type': 'video/mp4',
-          'Accept-Ranges': 'bytes',
-          'Access-Control-Allow-Origin': '*'
-        });
-        const reader = fallbackUpstream.body?.getReader();
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            res.write(Buffer.from(value));
-          }
-        }
-        res.end();
-      } catch (_) {
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Stream gateway error', details: err?.message }));
-      }
+      res.statusCode = 502;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Stream gateway error', details: err?.message }));
     }
   }
 }
 
 // Vercel Serverless Function Default Export
 export default async function handler(req: any, res: any) {
-  const { id, url } = req.query || {};
+  const { id, url, part } = req.query || {};
 
-  const targetUrl = await resolveVideoUrl(id as string, url as string);
-  const streamTarget = targetUrl || DEFAULT_FALLBACK_VIDEO;
+  const targetUrl = await resolveVideoUrl(id as string, url as string, part as string);
+  if (!targetUrl) {
+    res.statusCode = 404;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({
+      error: 'Media stream not found',
+      message: 'This video is either still processing or stored in private Telegram channel. Access directly in Telegram or provide a direct stream URL.'
+    }));
+    return;
+  }
 
-  return streamVideoRange(req, res, streamTarget);
+  return streamVideoRange(req, res, targetUrl);
 }
