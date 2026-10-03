@@ -197,13 +197,7 @@ export default function App() {
       });
     }
 
-    // 3. Fallback Ultra HD verified sample stream
-    candidates.push({
-      label: 'Verified 1080p Ultra HD Stream',
-      url: 'https://vjs.zencdn.net/v/oceans.mp4'
-    });
-
-    // 4. Supabase Database lookup
+    // 3. Supabase Database lookup
     try {
       const cleanUrl = APP_CONFIG.SUPABASE_URL.replace(/\/$/, '');
       const query = !isNaN(Number(id))
@@ -1601,32 +1595,18 @@ export default function App() {
                   <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-3">
                     <Tv className="w-6 h-6" />
                   </div>
-                  <h4 className="text-base font-semibold text-white mb-1">Stream Ready • Storage in Telegram Channel</h4>
+                  <h4 className="text-base font-semibold text-white mb-1">Direct Media Stream Notice</h4>
                   <p className="text-xs text-slate-300 max-w-md mb-4 leading-relaxed">
-                    Your 1080p media file was successfully processed and uploaded to your private Telegram channel.
-                    You can watch the high-res stream below, launch directly in Telegram Web/App, or switch parts.
+                    ভিডিও স্ট্রিমটি সরাসরি লোড হতে পারছে না (মূল লিঙ্কে Cloudflare/বট প্রতিরোধ সুরক্ষা থাকতে পারে)। আপনার ফাইলটি টেলিগ্রাম চ্যানেলে সুরক্ষিত থাকলে নিচের বাটনে ক্লিক করে সরাসরি দেখতে পারেন।
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-2">
-                    <button
-                      onClick={() => {
-                        const workingHdStream = 'https://vjs.zencdn.net/v/oceans.mp4';
-                        setActiveVideoSrc(workingHdStream);
-                        setVideoPlaybackError(null);
-                        showToast('loading', 'Loading 1080p Stream', 'Loaded verified 1080p stream sample.');
-                      }}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-lg shadow-indigo-600/20"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Play 1080p Stream</span>
-                    </button>
-
                     <a
                       href={cinemaMovieData?.telegramChannelUrl || `https://t.me/c/${APP_CONFIG.TELEGRAM_CHANNEL_ID.replace('-100', '').replace('-', '')}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700"
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-lg shadow-indigo-600/20"
                     >
-                      <Send className="w-3.5 h-3.5 text-indigo-400" />
+                      <Send className="w-3.5 h-3.5 fill-current" />
                       <span>Open in Telegram Channel</span>
                     </a>
 
