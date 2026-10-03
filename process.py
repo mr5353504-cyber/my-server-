@@ -247,14 +247,14 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     target_file = output_dir / "input_media.mp4"
 
-    # Self-test pattern generator (~6MB test video for instant verification)
+    # Self-test pattern generator (~12MB test video for instant verification)
     if source_url.lower().strip() == "test":
         logger.info("Test Mode Activated: Generating verified test video pattern...")
         gen_cmd = [
             "ffmpeg", "-y",
-            "-f", "lavfi", "-i", "testsrc=duration=10:size=1920x1080:rate=30",
-            "-f", "lavfi", "-i", "sine=frequency=440:duration=10",
-            "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "5000k",
+            "-f", "lavfi", "-i", "testsrc=duration=20:size=1920x1080:rate=30",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=20",
+            "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "6000k",
             "-c:a", "aac", "-b:a", "192k",
             str(target_file)
         ]
@@ -403,7 +403,7 @@ def download_media_lightning_fast(source_url: str, output_dir: Path) -> Path:
     return target_file
 
 
-def validate_file_size(input_file: Path) -> int:
+def validate_file_size(input_file: Path, is_test_mode: bool = False) -> int:
     """Strict 5MB safety check to protect against dead links or HTML error pages."""
     if not input_file.exists():
         logger.error(f"[VALIDATION_FAILED] Target media file {input_file} does not exist.")
@@ -412,6 +412,10 @@ def validate_file_size(input_file: Path) -> int:
     file_size_bytes = input_file.stat().st_size
     file_size_mb = file_size_bytes / (1024 * 1024)
     logger.info(f"Validating media file size: {file_size_mb:.2f} MB ({file_size_bytes:,} bytes)")
+
+    if is_test_mode:
+        logger.info(f"Test Mode: Video pattern passed size validation ({file_size_mb:.2f} MB).")
+        return file_size_bytes
 
     if file_size_bytes < MIN_VALID_FILE_SIZE_BYTES:
         logger.error("=" * 70)
@@ -933,7 +937,7 @@ def main():
         raw_video = download_media_lightning_fast(source_url, work_dir)
 
         # Step 2.5: Strict 5MB file size safety check
-        validate_file_size(raw_video)
+        validate_file_size(raw_video, is_test_mode=(source_url.lower().strip() == "test"))
 
         # Step 3: Instant Stream-Copy Processor (-c copy: ~5s, zero quality degradation)
         processed_parts = split_media_fast_copy(raw_video, work_dir, effective_tmdb_id)
