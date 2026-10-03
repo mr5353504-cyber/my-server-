@@ -20,17 +20,20 @@ export async function resolveVideoUrl(id?: string, directUrl?: string, part?: nu
     try {
       const cleanUrl = supabaseUrl.replace(/\/$/, '');
       const numId = parseInt(id, 10);
-      const query = !isNaN(numId)
-        ? `${cleanUrl}/rest/v1/movies?tmdb_id=eq.${numId}&select=*`
-        : `${cleanUrl}/rest/v1/movies?download_url=ilike.*${encodeURIComponent(id)}*&select=*`;
+      const headers = {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        Accept: 'application/json'
+      };
 
-      const resp = await fetch(query, {
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-          Accept: 'application/json'
-        }
-      });
+      let resp = await fetch(
+        !isNaN(numId) ? `${cleanUrl}/rest/v1/movies?id=eq.${numId}&select=*` : `${cleanUrl}/rest/v1/movies?download_url=ilike.*${encodeURIComponent(id)}*&select=*`,
+        { headers }
+      );
+
+      if (!resp.ok && !isNaN(numId)) {
+        resp = await fetch(`${cleanUrl}/rest/v1/movies?tmdb_id=eq.${numId}&select=*`, { headers });
+      }
 
       if (resp.ok) {
         const data = await resp.json();
