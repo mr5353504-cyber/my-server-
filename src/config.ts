@@ -18,12 +18,22 @@ export const APP_CONFIG = {
   GITHUB_OWNER: 'mr5353504-cyber',
   GITHUB_REPO: 'my-server-',
   get GITHUB_PAT(): string {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('APP_GITHUB_PAT');
-      if (stored) return stored.trim();
-    }
     if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GITHUB_PAT) {
-      return import.meta.env.VITE_GITHUB_PAT.trim();
+      const envVal = import.meta.env.VITE_GITHUB_PAT.trim();
+      if (envVal && !envVal.includes('ghp_nzw4')) return envVal;
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('APP_GITHUB_PAT');
+        if (stored) {
+          const cleanStored = stored.trim();
+          if (cleanStored.includes('ghp_nzw4')) {
+            localStorage.removeItem('APP_GITHUB_PAT');
+          } else if (cleanStored.startsWith('ghp_') && cleanStored.length > 30) {
+            return cleanStored;
+          }
+        }
+      } catch (_) {}
     }
     return DEFAULT_INTERNAL_PAT;
   },
