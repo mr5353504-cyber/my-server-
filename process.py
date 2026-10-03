@@ -875,8 +875,19 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
                 "processed_at": datetime.utcnow().isoformat()
             })
 
-        query_resp = supabase.table("movies").select("*").eq("tmdb_id", numeric_tmdb_id).execute()
-        existing_records = query_resp.data if query_resp else []
+        existing_records = []
+        id_column = "tmdb_id"
+        try:
+            query_resp = supabase.table("movies").select("*").eq("tmdb_id", numeric_tmdb_id).execute()
+            existing_records = query_resp.data if query_resp else []
+        except Exception as col_err:
+            if "tmdb_id" in str(col_err).lower():
+                id_column = "id"
+                try:
+                    query_resp = supabase.table("movies").select("*").eq("id", numeric_tmdb_id).execute()
+                    existing_records = query_resp.data if query_resp else []
+                except Exception:
+                    pass
 
         if existing_records and len(existing_records) > 0:
             record = existing_records[0]
@@ -893,11 +904,10 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
                 "download_url": direct_download_url,
                 "updated_at": datetime.utcnow().isoformat()
             }
-            supabase.table("movies").update(update_payload).eq("tmdb_id", numeric_tmdb_id).execute()
-            logger.info(f"Supabase update completed for TMDb #{numeric_tmdb_id} with {len(servers_to_add)} server parts.")
+            supabase.table("movies").update(update_payload).eq(id_column, numeric_tmdb_id).execute()
+            logger.info(f"Supabase update completed for #{numeric_tmdb_id} ({id_column}) with {len(servers_to_add)} server parts.")
         else:
             new_record = {
-                "tmdb_id": numeric_tmdb_id,
                 "title": metadata["title"],
                 "overview": metadata["overview"],
                 "poster_path": metadata["poster_path"],
@@ -907,8 +917,10 @@ def upsert_supabase_movie(supabase_url: str, service_role_key: str, tmdb_id: str
                 "created_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat()
             }
+            new_record[id_column] = numeric_tmdb_id
+
             supabase.table("movies").insert(new_record).execute()
-            logger.info(f"Supabase insert completed for TMDb #{numeric_tmdb_id} with {len(servers_to_add)} server parts.")
+            logger.info(f"Supabase insert completed for #{numeric_tmdb_id} ({id_column}) with {len(servers_to_add)} server parts.")
     except Exception as db_err:
         logger.warning(f"Supabase sync notice ({db_err}). Proceeding gracefully.")
 
