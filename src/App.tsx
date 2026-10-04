@@ -359,6 +359,16 @@ export default function App() {
 
     // 2. Direct Ingest Source (Proxied through gateway to avoid CORS / codec errors)
     if (directUrl && (directUrl.startsWith('http://') || directUrl.startsWith('https://')) && !directUrl.includes('/watch?id=') && !directUrl.includes('/download?id=')) {
+      if (directUrl.includes('pixeldrain.com')) {
+        const pdIdMatch = directUrl.match(/pixeldrain\.com\/(?:u|api\/file)\/([a-zA-Z0-9_-]+)/);
+        if (pdIdMatch) {
+          const directPd = `https://pixeldrain.com/api/file/${pdIdMatch[1]}`;
+          candidates.unshift({
+            label: 'Pixeldrain Ultra-Speed Stream (Direct CDN)',
+            url: directPd
+          });
+        }
+      }
       candidates.push({
         label: 'Direct Source Stream (Proxied Gateway)',
         url: `/api/stream?url=${encodeURIComponent(directUrl)}`
