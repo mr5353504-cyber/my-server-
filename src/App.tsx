@@ -279,6 +279,12 @@ export default function App() {
     parts?: { partIndex: number; title: string; downloadUrl: string; telegramUrl?: string; sizeStr?: string }[];
   } | null>(null);
 
+  // Hugging Face / Cloudflare Direct Telegram Video Streamer State
+  const [streamerModalOpen, setStreamerModalOpen] = useState(false);
+  const [streamerUrlInput, setStreamerUrlInput] = useState(() => APP_CONFIG.STREAMER_URL);
+  const [streamerTestStatus, setStreamerTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [streamerTestMessage, setStreamerTestMessage] = useState('');
+
   const openDownloadModal = (id?: string) => {
     const effectiveId = id || tmdbIdInput.trim() || '157336';
     const publicChannel = APP_CONFIG.TELEGRAM_CHANNEL_USERNAME || 'server7766';
@@ -422,7 +428,7 @@ export default function App() {
     const candidates = await resolveStreamCandidates(effectiveId, sUrl || sourceUrl);
     // Prioritize our range gateway to prevent CORS & decoding issues
     const gatewayCandidate = candidates.find(c => c.url.startsWith('/api/stream'));
-    const initialSource = gatewayCandidate?.url || `/api/stream?id=${encodeURIComponent(effectiveId)}&part=1`;
+    let initialSource = gatewayCandidate?.url || `/api/stream?id=${encodeURIComponent(effectiveId)}&part=1`;
     setActiveVideoSrc(initialSource);
 
     // Identify if the stream has multiple parts
@@ -464,6 +470,24 @@ export default function App() {
       ];
     }
 
+    // If Direct Streamer is configured, map all telegram parts to the high-speed stream endpoint
+    const streamerEndpoint = APP_CONFIG.STREAMER_URL;
+    if (streamerEndpoint && partsList.length > 0) {
+      partsList = partsList.map(p => {
+        const match = p.telegramUrl?.match(/t\.me\/([^/]+)\/(\d+)/);
+        if (match) {
+          return {
+            ...p,
+            url: `${streamerEndpoint}/stream/${match[1]}/${match[2]}`
+          };
+        }
+        return p;
+      });
+      initialSource = partsList[0].url;
+      setActiveVideoSrc(initialSource);
+      setPlayerMode('player');
+    }
+
     setCinemaMovieData({
       id: effectiveId,
       title: `Movie #${effectiveId}`,
@@ -475,6 +499,42 @@ export default function App() {
       telegramChannelUrl: `https://t.me/${publicChannel}`
     });
     setCinemaPlayerOpen(true);
+  };
+
+  const handleTestStreamer = async () => {
+    const url = streamerUrlInput.trim().replace(/\/$/, '');
+    if (!url || !url.startsWith('http')) {
+      setStreamerTestStatus('error');
+      setStreamerTestMessage('Please enter a valid HTTP/HTTPS URL (e.g. https://your-space.hf.space).');
+      return;
+    }
+    setStreamerTestStatus('testing');
+    try {
+      const resp = await fetch(`${url}/health`, { signal: AbortSignal.timeout(6000) });
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        setStreamerTestStatus('success');
+        setStreamerTestMessage(data.telethon ? 'Connected to Telegram MTProto!' : 'Streamer server is online!');
+      } else {
+        setStreamerTestStatus('error');
+        setStreamerTestMessage(`Server returned HTTP ${resp.status}`);
+      }
+    } catch {
+      setStreamerTestStatus('error');
+      setStreamerTestMessage('Could not connect. Ensure Space is running.');
+    }
+  };
+
+  const handleSaveStreamer = () => {
+    const clean = streamerUrlInput.trim().replace(/\/$/, '');
+    if (clean) {
+      localStorage.setItem('APP_STREAMER_URL', clean);
+      showToast('success', 'Streamer Saved', 'High-Speed Streamer endpoint activated.');
+    } else {
+      localStorage.removeItem('APP_STREAMER_URL');
+      showToast('success', 'Streamer Cleared', 'Reset to standard embed mode.');
+    }
+    setStreamerModalOpen(false);
   };
 
   // Supabase Section
@@ -1245,7 +1305,26 @@ export default function App() {
               <p className="text-[10px] text-emerald-400 font-mono tracking-wider">ULTRA-FAST STREAM ENGINE</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => {
+                setStreamerUrlInput(APP_CONFIG.STREAMER_URL);
+                setStreamerTestStatus('idle');
+                setStreamerTestMessage('');
+                setStreamerModalOpen(true);
+              }}
+              title="Connect Hugging Face / Cloudflare Direct Streamer"
+              className={`text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all border ${
+                APP_CONFIG.STREAMER_URL
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                  : 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30'
+              }`}
+            >
+              <Zap className={`w-3.5 h-3.5 ${APP_CONFIG.STREAMER_URL ? 'text-emerald-400 fill-current' : 'text-amber-400'}`} />
+              <span className="font-medium">
+                {APP_CONFIG.STREAMER_URL ? 'Streamer: Active' : 'Direct Streamer'}
+              </span>
+            </button>
             <button
               onClick={handleResetSession}
               title="Reset workspace session"
@@ -2057,6 +2136,24 @@ export default function App() {
               </div>
 
               <button
+                onClick={() => {
+                  setStreamerUrlInput(APP_CONFIG.STREAMER_URL);
+                  setStreamerTestStatus('idle');
+                  setStreamerTestMessage('');
+                  setStreamerModalOpen(true);
+                }}
+                title="Stream direct from Telegram without limits via Hugging Face/Cloudflare"
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 transition-all border ${
+                  APP_CONFIG.STREAMER_URL
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-slate-800'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-current" />
+                <span className="hidden sm:inline">{APP_CONFIG.STREAMER_URL ? '⚡ Direct MTProto' : '⚡ Direct Streamer'}</span>
+              </button>
+
+              <button
                 onClick={() => setCinemaPlayerOpen(false)}
                 className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
                 title="Close Player"
@@ -2397,6 +2494,114 @@ export default function App() {
                   <span>Copy</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hugging Face / Cloudflare Direct Streamer Setup Modal */}
+      {streamerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Zap className="w-4 h-4 fill-current" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white">Direct Telegram Video Streamer</h3>
+                  <p className="text-[11px] text-slate-400">টেলিগ্রামের ভিডিও সরাসরি ওয়েবসাইটের ভেতর ফুল স্পিডে চালানোর ইঞ্জিন</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setStreamerModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Explanation */}
+            <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed">
+              টেলিগ্রামের ২০ এমবি লিমিট বাইপাস করে আপনার ১ জিবি/২ জিবির মুভি সরাসরি আপনার ওয়েবসাইটের প্লেয়ারে চালাতে নিচে আপনার <strong>Hugging Face Space</strong> বা <strong>Cloudflare Worker</strong> এর URL টি দিন।
+            </div>
+
+            {/* Input & Test */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <span>Streamer Server URL:</span>
+                {APP_CONFIG.STREAMER_URL && (
+                  <span className="text-[10px] text-emerald-400 font-mono">Current: Active</span>
+                )}
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={streamerUrlInput}
+                  onChange={(e) => setStreamerUrlInput(e.target.value)}
+                  placeholder="https://yourusername-tgstream.hf.space"
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
+                />
+                <button
+                  type="button"
+                  disabled={streamerTestStatus === 'testing'}
+                  onClick={handleTestStreamer}
+                  className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {streamerTestStatus === 'testing' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                  ) : (
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  <span>Test</span>
+                </button>
+              </div>
+
+              {streamerTestStatus !== 'idle' && (
+                <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
+                  streamerTestStatus === 'success'
+                    ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300'
+                    : streamerTestStatus === 'error'
+                    ? 'bg-rose-950/60 border border-rose-500/40 text-rose-300'
+                    : 'bg-indigo-950/60 border border-indigo-500/40 text-indigo-300'
+                }`}>
+                  {streamerTestStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />}
+                  {streamerTestStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />}
+                  {streamerTestStatus === 'testing' && <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin flex-shrink-0" />}
+                  <span>{streamerTestMessage}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Quick 3-Step Setup Instructions */}
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-2 text-xs text-slate-300">
+              <div className="font-semibold text-white flex items-center gap-1.5">
+                <span>১০০% ফ্রি Hugging Face Space সেটআপ (মাত্র ২ মিনিট):</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-slate-400 leading-relaxed">
+                <li><strong className="text-slate-200">huggingface.co</strong>-তে একটি ফ্রি অ্যাকাউন্ট তৈরি করে <strong>"New Space"</strong> চাপুন (SDK: <strong>Docker</strong>)।</li>
+                <li>আমাদের প্রজেক্টের <code className="text-indigo-300 font-mono">huggingface-streamer/</code> ফোল্ডারের ফাইলগুলো সেখানে আপলোড করুন।</li>
+                <li>Space Settings-এ <code className="text-amber-300 font-mono">API_ID</code>, <code className="text-amber-300 font-mono">API_HASH</code>, ও <code className="text-amber-300 font-mono">BOT_TOKEN</code> যুক্ত করুন। Space এর লিংক উপরে পেস্ট করুন!</li>
+              </ol>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setStreamerModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStreamer}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Save & Activate Streamer</span>
+              </button>
             </div>
           </div>
         </div>
