@@ -40,4 +40,17 @@ export const APP_CONFIG = {
   TELEGRAM_CHANNEL_ID: '-1004408587176',
   TELEGRAM_CHANNEL_USERNAME: 'server7766',
   SUPABASE_URL: 'https://tmomuyxckjhlsjfbzfvz.supabase.co',
+  get STREAMER_URL(): string {
+    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STREAMER_URL) {
+      return import.meta.env.VITE_STREAMER_URL.trim().replace(/\/$/, '');
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('APP_STREAMER_URL');
+        if (stored && stored.startsWith('http')) return stored.trim().replace(/\/$/, '');
+      } catch (_) {}
+    }
+    return '';
+  },
 };
+
