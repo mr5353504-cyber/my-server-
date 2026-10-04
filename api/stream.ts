@@ -3,6 +3,9 @@ import type { IncomingMessage, ServerResponse } from 'http';
 // Helper to resolve stream URL from ID, direct URL, and part index
 export async function resolveVideoUrl(id?: string, directUrl?: string, part?: number | string): Promise<string | null> {
   if (directUrl && directUrl.startsWith('http') && !directUrl.includes('/watch?id=') && !directUrl.includes('/download?id=')) {
+    if (directUrl.includes('pixeldrain.com/u/')) {
+      return directUrl.replace('pixeldrain.com/u/', 'pixeldrain.com/api/file/');
+    }
     return directUrl;
   }
 
