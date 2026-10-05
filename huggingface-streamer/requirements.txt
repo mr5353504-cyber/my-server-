@@ -1,6 +1,0 @@
-fastapi==0.111.0
-uvicorn==0.30.1
-telethon==1.36.0
-cryptg==0.4.0
-python-dotenv==1.0.1
-aiofiles==23.2.1
