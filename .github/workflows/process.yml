@@ -49,7 +49,7 @@ jobs:
           SOURCE_URL: ${{ github.event.client_payload.source_url || github.event.inputs.source_url }}
           TMDB_ID: ${{ github.event.client_payload.tmdb_id || github.event.inputs.tmdb_id || '157336' }}
           MOVIE_TITLE: ${{ github.event.client_payload.movie_title || github.event.inputs.movie_title }}
-          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY || '1d5668c3-d5f4-44ef-8665-93e5c683a724' }}
+          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY || '55e00a65-998d-4b39-b343-60b2b98f2835' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
