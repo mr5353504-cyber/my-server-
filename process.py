@@ -5,7 +5,7 @@ Pixeldrain Cloud Ingest & Streaming Pipeline
 1. Resolves smart download links (InstantCloud, direct CDN, Google Drive, etc.).
 2. High-speed multi-threaded Aria2c / yt-dlp download.
 3. Media integrity check (> 5MB, not an HTML error page).
-4. Direct upload to Pixeldrain API with automatic email verification validation.
+4. Direct upload to Pixeldrain API with verified API key.
 5. Emits real-time step progress and final output JSON.
 """
 
@@ -34,8 +34,11 @@ PIXELDRAIN_API_KEY = os.environ.get("PIXELDRAIN_API_KEY", DEFAULT_API_KEY).strip
 DOWNLOAD_DIR = Path("/tmp/movie_downloads")
 
 
-def resolve_source_url(raw_url: str) -> str:
-    """Resolve intermediate download landing pages like InstantCloud to direct video URLs"""
+def resolve_source_url(raw_url: str) -> tuple[str, str | None]:
+    """
+    Resolve intermediate download landing pages like InstantCloud to direct video URLs.
+    Returns (resolved_direct_url, suggested_filename).
+    """
     logger.info(f"Analyzing source link protocol: {raw_url}")
 
     # InstantCloud resolver
@@ -46,28 +49,41 @@ def resolve_source_url(raw_url: str) -> str:
             file_code = match.group(1)
             probe_url = f"https://instantcloud.org/file/{file_code}/download?json=1&probe=1"
             logger.info(f"InstantCloud detected. Polling direct stream probe: {probe_url}")
-            headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
-            for attempt in range(12):  # Try for up to 36 seconds
+            headers = {
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
+            }
+
+            # Poll for up to 90 seconds (InstantCloud's max preparation time)
+            for attempt in range(30):
                 try:
                     req = urllib.request.Request(probe_url, headers=headers)
-                    with urllib.request.urlopen(req, timeout=10) as resp:
+                    with urllib.request.urlopen(req, timeout=12) as resp:
                         data = json.loads(resp.read().decode())
                         if data.get("success") and data.get("download_url"):
                             direct = data["download_url"]
-                            logger.info(f"InstantCloud direct link extracted successfully: {direct[:60]}...")
-                            return direct
-                        logger.info(f"Waiting for InstantCloud upstream ({data.get('message', 'Preparing')})...")
+                            suggested_filename = data.get("filename")
+                            logger.info(f"InstantCloud direct link extracted successfully! File: {suggested_filename}")
+                            return direct, suggested_filename
+
+                        msg = data.get("message", "Preparing video stream")
+                        logger.info(f"Waiting for InstantCloud upstream ({msg})... attempt {attempt + 1}/30")
                 except Exception as e:
-                    logger.warning(f"Probe attempt {attempt + 1} error: {e}")
+                    logger.warning(f"Probe attempt {attempt + 1} warning: {e}")
                 time.sleep(3)
 
-    return raw_url
+            raise RuntimeError(
+                "InstantCloud সার্ভার তাদের ব্যাকএন্ড (Google Photos/Drive) থেকে লিঙ্ক তৈরি করতে দেরি করছে বা টাইমআউট হয়েছে। "
+                "অনুগ্রহ করে ১ মিনিট পর আবার ট্রাই করুন অথবা সরাসরি ভিডিও লিঙ্ক ব্যবহার করুন।"
+            )
+
+    return raw_url, None
 
 
 def download_media(source_url: str, output_dir: Path) -> Path:
-    """Download movie file using aria2c or yt-dlp fallback"""
+    """Download movie file using aria2c with fallback to curl"""
     output_dir.mkdir(parents=True, exist_ok=True)
-    clean_url = resolve_source_url(source_url)
+    clean_url, suggested_filename = resolve_source_url(source_url)
     logger.info(f"Initiating 16-thread Aria2c download from: {clean_url[:80]}...")
 
     headers = [
@@ -86,15 +102,21 @@ def download_media(source_url: str, output_dir: Path) -> Path:
         "--allow-overwrite=true",
         "--dir", str(output_dir),
         "--summary-interval=5",
-        *headers,
-        clean_url
+        *headers
     ]
+
+    if suggested_filename:
+        # Sanitize filename
+        safe_name = suggested_filename.replace("/", "_").replace("\\", "_")
+        cmd.extend(["--out", safe_name])
+
+    cmd.append(clean_url)
 
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         logger.warning(f"Aria2c had issues. Output:\n{proc.stderr}")
         logger.info("Attempting fallback download via curl with browser headers...")
-        target_file = output_dir / "movie.mp4"
+        target_file = output_dir / (suggested_filename or "movie.mp4")
         curl_cmd = [
             "curl", "-L",
             "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36",
@@ -121,14 +143,11 @@ def download_media(source_url: str, output_dir: Path) -> Path:
                 head = f.read(512).decode("utf-8", errors="ignore").lower()
                 if "<!doctype html" in head or "<html" in head:
                     raise RuntimeError(
-                        f"প্রদত্ত লিংকটি কোনো সরাসরি ভিডিও নয়, এটি একটি ওয়েব পেজ (HTML)। "
-                        f"অনুগ্রহ করে সরাসরি ভিডিও ডাউনলোড লিংক দিন।"
+                        "প্রদত্ত লিংকটি কোনো সরাসরি ভিডিও নয়, এটি একটি ওয়েব পেজ (HTML)। "
+                        "অনুগ্রহ করে সরাসরি ভিডিও ডাউনলোড লিংক দিন।"
                     )
         except UnicodeDecodeError:
             pass
-
-    if size_bytes < 5 * 1024 * 1024:
-        logger.warning(f"File size is very small ({size_mb:.2f} MB). Proceeding with upload.")
 
     return downloaded
 
@@ -162,20 +181,8 @@ def upload_to_pixeldrain(file_path: Path, api_key: str) -> dict:
     except Exception as e:
         raise RuntimeError(f"Invalid response from Pixeldrain: {res.stdout}") from e
 
-    # Check if email is unverified
+    # Check if email is unverified or rejected
     if not response_data.get("success"):
-        val = response_data.get("value")
-        msg = response_data.get("message", "")
-        if val == "email_address_not_verified" or "verify your e-mail" in msg.lower():
-            err_msg = (
-                "⚠️ Pixeldrain ইমেইল ভেরিফিকেশন প্রয়োজন!\n"
-                "আপনার Pixeldrain অ্যাকাউন্টের ইমেইল (mr5353504@gmail.com) ভেরিফাই করা হয়নি। "
-                "অনুগ্রহ করে আপনার Gmail ইনবক্স খুলে Pixeldrain-এর 'Verify Email' লিংকে ক্লিক করুন।"
-            )
-            logger.error("=" * 60)
-            logger.error(err_msg)
-            logger.error("=" * 60)
-            raise RuntimeError(err_msg)
         raise RuntimeError(f"Pixeldrain rejected upload: {response_data}")
 
     file_id = response_data["id"]
