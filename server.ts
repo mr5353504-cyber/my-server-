@@ -46,11 +46,12 @@ async function startServer() {
   const INGEST_CACHE: Record<string, any> = {
     'LvbbPejV': {
       success: true,
-      file_id: 'UUB7kYhc',
-      title: 'Unabomber (2026) 1080p Dual Audio NF',
+      file_id: 'kJv3w6sY',
+      title: 'MovieLinkBD.com - Unabomber.2026.1080p.Dual[Hindi-English].EAC3.NF.h264.ESub',
       tmdb_id: '157336',
-      watch_url: 'https://pixeldrain.com/api/file/UUB7kYhc',
-      download_url: 'https://pixeldrain.com/api/file/UUB7kYhc?download',
+      watch_url: 'https://pixeldrain.com/api/file/kJv3w6sY',
+      download_url: 'https://pixeldrain.com/api/file/kJv3w6sY?download',
+      embed_url: 'https://pixeldrain.com/u/kJv3w6sY?embed&style=solarized_dark',
       size_mb: '2204.48 MB'
     }
   };
@@ -345,6 +346,43 @@ async function startServer() {
     } catch (err: any) {
       console.error('[PlayStream] Error:', err);
       if (!res.headersSent) res.status(500).send('Streaming error');
+    }
+  });
+
+  // Pixeldrain Universal Embed Proxy (Guarantees iframe embedding without CSP blockage)
+  app.get('/api/pixeldrain-embed', async (req, res) => {
+    try {
+      const id = (req.query.id as string) || 'kJv3w6sY';
+      const style = (req.query.style as string) || 'solarized_dark';
+      const pdUrl = `https://pixeldrain.com/u/${id}?embed&style=${style}`;
+
+      const pdRes = await fetch(pdUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': 'text/html'
+        }
+      });
+
+      if (!pdRes.ok) {
+        return res.status(pdRes.status).send('Failed to load Pixeldrain player');
+      }
+
+      let html = await pdRes.text();
+
+      // Rewrite relative URLs to absolute so scripts, styles, and assets resolve properly
+      html = html.replace(/href="\/res\//g, 'href="https://pixeldrain.com/res/');
+      html = html.replace(/src='\/res\//g, "src='https://pixeldrain.com/res/");
+      html = html.replace(/src="\/res\//g, 'src="https://pixeldrain.com/res/');
+      html = html.replace(/href="\/theme\.css"/g, 'href="https://pixeldrain.com/theme.css"');
+      html = html.replace(/href="\/style\.css"/g, 'href="https://pixeldrain.com/style.css"');
+
+      res.removeHeader('X-Frame-Options');
+      res.removeHeader('Content-Security-Policy');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(html);
+    } catch (err: any) {
+      console.error('[EmbedProxy] Error:', err);
+      return res.status(500).send('Embed proxy error');
     }
   });
 

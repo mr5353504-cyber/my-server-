@@ -132,6 +132,7 @@ export default function App() {
   const [cinemaPlayerOpen, setCinemaPlayerOpen] = useState(false);
   const [playerVideoUrl, setPlayerVideoUrl] = useState('');
   const [playerMovieTitle, setPlayerMovieTitle] = useState('');
+  const [playerTab, setPlayerTab] = useState<'embed' | 'video'>('embed');
   const [videoError, setVideoError] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -304,36 +305,6 @@ export default function App() {
         }, 800);
         return;
       }
-    }
-
-    // CASE 1.5: Known Ingested InstantCloud Unabomber Link
-    if (cleanUrl.includes('LvbbPejV') || cleanUrl.toLowerCase().includes('unabomber')) {
-      setTimeout(() => {
-        updateStepStatus(1, 'completed');
-        updateStepStatus(2, 'completed');
-        updateStepStatus(3, 'completed');
-        updateStepStatus(4, 'completed');
-        updateStepStatus(5, 'completed');
-
-        const resultObj = {
-          title: movieTitle.trim() || 'MovieLinkBD.com - Unabomber.2026.1080p.Dual[Hindi-English].EAC3.NF.h264.ESub',
-          watchUrl: 'https://pixeldrain.com/api/file/UUB7kYhc',
-          downloadUrl: 'https://pixeldrain.com/api/file/UUB7kYhc?download',
-          fileId: 'UUB7kYhc',
-          size: '2204.48 MB (2.2 GB)'
-        };
-        setActiveResult(resultObj);
-        saveToHistory({
-          id: 'UUB7kYhc',
-          tmdbId: '157336',
-          ...resultObj,
-          createdAt: new Date().toISOString()
-        });
-
-        setIsProcessing(false);
-        setIsPipelineActive(false);
-      }, 500);
-      return;
     }
 
     // CASE 2: 3rd-Party Download Link (Dual Engine: Instant Cache + Local Server + GitHub Actions)
@@ -853,9 +824,31 @@ export default function App() {
                 <div>
                   <h3 className="font-bold text-base text-white">{activeResult.title}</h3>
                   <p className="text-xs text-emerald-400 font-mono mt-0.5">
-                    Pixeldrain File ID: {activeResult.fileId || 'Resolved'} {activeResult.size && `• Size: ${activeResult.size}`}
+                    Pixeldrain File ID: {activeResult.fileId || extractFileId(activeResult.watchUrl) || 'Resolved'} {activeResult.size && `• Size: ${activeResult.size}`}
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Official Pixeldrain Embed Player (Right in the page) */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+              <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
+                <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <Tv className="w-4 h-4" />
+                  Pixeldrain অফিসিয়াল প্লেয়ার (Embedded Player):
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  ID: {activeResult.fileId || extractFileId(activeResult.watchUrl)}
+                </span>
+              </div>
+              <div className="aspect-video w-full bg-black">
+                <iframe
+                  src={`/api/pixeldrain-embed?id=${activeResult.fileId || extractFileId(activeResult.watchUrl) || 'kJv3w6sY'}&style=solarized_dark`}
+                  className="w-full h-full border-0"
+                  allowFullScreen
+                  allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                  title={activeResult.title}
+                />
               </div>
             </div>
 
@@ -1030,76 +1023,101 @@ export default function App() {
       {cinemaPlayerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md">
           <div className="relative w-full max-w-4xl bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900">
-              <div className="flex items-center gap-2">
-                <Film className="w-4 h-4 text-emerald-400" />
-                <h3 className="font-semibold text-sm text-white truncate max-w-md">{playerMovieTitle}</h3>
+            <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900 gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Film className="w-4 h-4 text-emerald-400 shrink-0" />
+                <h3 className="font-semibold text-sm text-white truncate max-w-sm sm:max-w-md">{playerMovieTitle}</h3>
               </div>
-              <button
-                onClick={() => setCinemaPlayerOpen(false)}
-                className="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            {/* MKV Notice Banner */}
-            <div className="px-5 py-2.5 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between text-xs text-amber-300/90 gap-2">
-              <span className="flex items-center gap-1.5 font-medium">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                ব্রাউজারে MKV / Dolby Audio সরাসরি না চললে নিচের <strong>VLC বা MX Player</strong> বাটনে ক্লিক করে সরাসরি স্ট্রিম করুন।
-              </span>
-            </div>
-
-            {/* Video Viewport */}
-            <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
-              <video
-                ref={videoRef}
-                src={playerVideoUrl}
-                controls
-                autoPlay
-                playsInline
-                onError={() => setVideoError(true)}
-                className="w-full h-full object-contain"
-              />
-
-              {/* Video Error / Codec Incompatibility Overlay */}
-              {videoError && (
-                <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-10 space-y-4">
-                  <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                    <Tv className="w-6 h-6" />
-                  </div>
-                  <div className="max-w-md space-y-1">
-                    <h4 className="text-base font-bold text-white">MKV / Dolby অডিও ফরম্যাট সনাক্ত হয়েছে</h4>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      গুগল ক্রোম ও মোবাইল ব্রাউজার এই ফরম্যাটটি সরাসরি চালাতে পারে না। <strong>VLC বা MX Player</strong>-এ এটি কোনো ডাউনলোড ছাড়াই স্মুথভাবে চলবে!
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-center gap-3">
-                    <a
-                      href={`vlc://${playerVideoUrl}`}
-                      className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-900/40 transition-transform active:scale-95"
-                    >
-                      <Play className="w-4 h-4 fill-white" />
-                      <span>VLC Player-এ সরাসরি দেখুন</span>
-                    </a>
-                    <a
-                      href={`intent:${playerVideoUrl}#Intent;type=video/*;action=android.intent.action.VIEW;end`}
-                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-indigo-900/40 transition-transform active:scale-95"
-                    >
-                      <Smartphone className="w-4 h-4" />
-                      <span>MX / Phone Player-এ চালান</span>
-                    </a>
-                    <a
-                      href={`${playerVideoUrl}?download`}
-                      download
-                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-900/40 transition-transform active:scale-95"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>সরাসরি ডাউনলোড (2.3 GB)</span>
-                    </a>
-                  </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Player Mode Switcher */}
+                <div className="bg-slate-950 p-0.5 rounded-lg border border-slate-800 flex items-center text-xs">
+                  <button
+                    onClick={() => setPlayerTab('embed')}
+                    className={`px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5 ${
+                      playerTab === 'embed'
+                        ? 'bg-emerald-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Tv className="w-3.5 h-3.5" />
+                    <span>Pixeldrain Embed</span>
+                  </button>
+                  <button
+                    onClick={() => setPlayerTab('video')}
+                    className={`px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5 ${
+                      playerTab === 'video'
+                        ? 'bg-emerald-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>HTML5 Video</span>
+                  </button>
                 </div>
+
+                <button
+                  onClick={() => setCinemaPlayerOpen(false)}
+                  className="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Viewport Area */}
+            <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
+              {playerTab === 'embed' ? (
+                <iframe
+                  src={`/api/pixeldrain-embed?id=${extractFileId(playerVideoUrl) || 'kJv3w6sY'}&style=solarized_dark`}
+                  className="w-full h-full border-0"
+                  allowFullScreen
+                  allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                  title={playerMovieTitle}
+                />
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    src={playerVideoUrl}
+                    controls
+                    autoPlay
+                    playsInline
+                    onError={() => setVideoError(true)}
+                    className="w-full h-full object-contain"
+                  />
+
+                  {/* Video Error / Codec Incompatibility Overlay */}
+                  {videoError && (
+                    <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-10 space-y-4">
+                      <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                        <Tv className="w-6 h-6" />
+                      </div>
+                      <div className="max-w-md space-y-1">
+                        <h4 className="text-base font-bold text-white">MKV / Dolby অডিও ফরম্যাট সনাক্ত হয়েছে</h4>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          গুগল ক্রোম ও মোবাইল ব্রাউজার এই ফরম্যাটটি সরাসরি চালাতে পারে না। <strong>VLC বা MX Player</strong>-এ এটি কোনো ডাউনলোড ছাড়াই স্মুথভাবে চলবে!
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-3">
+                        <button
+                          onClick={() => setPlayerTab('embed')}
+                          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-900/40"
+                        >
+                          <Tv className="w-4 h-4" />
+                          <span>Pixeldrain Embed প্লেয়ারে দেখুন</span>
+                        </button>
+                        <a
+                          href={`vlc://${playerVideoUrl}`}
+                          className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-900/40"
+                        >
+                          <Play className="w-4 h-4 fill-white" />
+                          <span>VLC Player-এ সরাসরি দেখুন</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
