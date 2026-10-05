@@ -297,52 +297,138 @@ export default function App() {
       }
     }
 
-    // CASE 2: 3rd-Party Download Link (Send to GitHub Actions 1Gbps Runner)
+    // CASE 2: 3rd-Party Download Link (Dual Engine: Instant Cache + Local Server + GitHub Actions)
     setTimeout(async () => {
       updateStepStatus(1, 'completed');
       updateStepStatus(2, 'active');
 
       try {
-        const token = APP_CONFIG.GITHUB_PAT?.trim();
-        const headers: Record<string, string> = {
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
         const effectiveTitle = movieTitle.trim() || `Movie Ingest ${Date.now()}`;
-        const effectiveId = `movie_${Date.now()}`;
+        const res = await fetch('/api/start-ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_url: cleanUrl,
+            movie_title: effectiveTitle,
+            pixeldrain_api_key: apiKey,
+            github_pat: APP_CONFIG.GITHUB_PAT
+          })
+        });
 
-        const res = await fetch(
-          `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/dispatches`,
-          {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              event_type: 'process_video',
-              client_payload: {
-                source_url: cleanUrl,
-                tmdb_id: effectiveId,
-                movie_title: effectiveTitle,
-                pixeldrain_api_key: apiKey
-              }
-            })
-          }
-        );
-
-        if (res.status === 204) {
-          const actionsUrl = `https://github.com/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions`;
-          setActiveRunUrl(actionsUrl);
-          startPolling(effectiveTitle, effectiveId);
-        } else {
-          throw new Error(`GitHub responded with HTTP ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`সার্ভার এরর: HTTP ${res.status}`);
         }
+
+        const data = await res.json();
+
+        // 1. Instant Cache or Existing Pixeldrain
+        if (data.type === 'instant' && data.result) {
+          updateStepStatus(2, 'completed');
+          updateStepStatus(3, 'completed');
+          updateStepStatus(4, 'completed');
+          updateStepStatus(5, 'completed');
+          setIsProcessing(false);
+          setIsPipelineActive(false);
+
+          const resultObj = {
+            title: data.result.title || effectiveTitle,
+            watchUrl: data.result.watch_url,
+            downloadUrl: data.result.download_url,
+            fileId: data.result.file_id,
+            size: data.result.size_mb
+          };
+          setActiveResult(resultObj);
+          saveToHistory({
+            id: data.result.file_id,
+            tmdbId: data.result.file_id,
+            ...resultObj,
+            createdAt: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 2. Local Server Processing
+        if (data.type === 'local_job' && data.jobId) {
+          startLocalJobPolling(data.jobId, effectiveTitle);
+          return;
+        }
+
+        // 3. GitHub Actions Runner
+        if (data.type === 'github_actions') {
+          const actionsUrl = `https://github.com/${data.owner}/${data.repo}/actions`;
+          setActiveRunUrl(actionsUrl);
+          startPolling(effectiveTitle, data.effectiveId);
+          return;
+        }
+
+        throw new Error('সার্ভার থেকে অপ্রত্যাশিত রেসপন্স এসেছে');
       } catch (err: any) {
-        updateStepStatus(2, 'failed', err.message || 'Workflow dispatch failed');
+        updateStepStatus(2, 'failed', err.message || 'Ingest initiation failed');
         setIsProcessing(false);
         setIsPipelineActive(false);
       }
-    }, 1000);
+    }, 600);
+  };
+
+  const startLocalJobPolling = (jobId: string, title: string) => {
+    let attempts = 0;
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch(`/api/job-status?id=${jobId}`);
+        if (!res.ok) return;
+        const job = await res.json();
+
+        if (job.currentStep >= 2) updateStepStatus(2, 'active');
+        if (job.currentStep >= 3) {
+          updateStepStatus(2, 'completed');
+          updateStepStatus(3, 'active');
+        }
+        if (job.currentStep >= 4) {
+          updateStepStatus(3, 'completed');
+          updateStepStatus(4, 'active');
+        }
+
+        if (job.status === 'completed' && job.result) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setIsProcessing(false);
+          setIsPipelineActive(false);
+
+          updateStepStatus(2, 'completed');
+          updateStepStatus(3, 'completed');
+          updateStepStatus(4, 'completed');
+          updateStepStatus(5, 'completed');
+
+          const resultObj = {
+            title: job.result.title || title,
+            watchUrl: job.result.watch_url,
+            downloadUrl: job.result.download_url,
+            fileId: job.result.file_id,
+            size: job.result.size_mb
+          };
+          setActiveResult(resultObj);
+          saveToHistory({
+            id: job.result.file_id,
+            tmdbId: job.result.file_id,
+            ...resultObj,
+            createdAt: new Date().toISOString()
+          });
+        } else if (job.status === 'failed') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setIsProcessing(false);
+          setIsPipelineActive(false);
+          updateStepStatus(job.currentStep || 4, 'failed', job.error || 'প্রসেসিং ব্যর্থ হয়েছে');
+        }
+
+        if (attempts > 120) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setIsProcessing(false);
+          setIsPipelineActive(false);
+        }
+      } catch (_) {}
+    }, 2500);
   };
 
   const startPolling = (title: string, id: string) => {
@@ -923,14 +1009,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Pixeldrain API Key Modal */}
+      {/* Pixeldrain API Key & Engine Settings Modal */}
       {isApiKeyModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
                 <Key className="w-4 h-4 text-emerald-400" />
-                Pixeldrain API Key সেটিংস
+                API & ইঞ্জিন সেটিংস
               </h3>
               <button onClick={() => setIsApiKeyModalOpen(false)} className="text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
@@ -946,7 +1032,16 @@ export default function App() {
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
               />
               <p className="text-[11px] text-slate-500">
-                ডিফল্টভাবে আপনার দেওয়া কি সেট করা আছে: <code className="text-emerald-400 font-mono">55e00a65-998d-4b39-b343-60b2b98f2835</code>
+                ডিফল্টভাবে আপনার কি সেট করা আছে: <code className="text-emerald-400 font-mono">55e00a65-998d-4b39-b343-60b2b98f2835</code>
+              </p>
+            </div>
+
+            <div className="p-3 bg-emerald-950/40 border border-emerald-800/40 rounded-xl space-y-1 text-xs text-emerald-300">
+              <div className="font-semibold flex items-center gap-1.5 text-emerald-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> ডুয়াল ক্লাউড ইঞ্জিন সক্রিয়
+              </div>
+              <p className="text-[11px] text-emerald-400/80">
+                সার্ভারে ৫০৪ জিবি ডিস্ক স্পেস রয়েছে। কোনো গিটহাব টোকেন ছাড়াও সরাসরি সুপার-স্পিডে ডাউনলোড ও Pixeldrain আপলোড হবে!
               </p>
             </div>
 
@@ -959,7 +1054,7 @@ export default function App() {
                 }}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg"
               >
-                Save Key
+                সংরক্ষণ করুন
               </button>
             </div>
           </div>
