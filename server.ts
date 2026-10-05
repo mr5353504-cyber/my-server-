@@ -302,6 +302,52 @@ async function startServer() {
     return streamVideoRange(req, res, targetUrl);
   });
 
+  // Real-time Universal Browser Streamer (Remuxes MKV/EAC3 on-the-fly to MP4/AAC using ffmpeg)
+  app.get('/api/play-stream', async (req, res) => {
+    try {
+      const id = req.query.id as string | undefined;
+      const rawUrl = req.query.url as string | undefined;
+      let targetUrl = rawUrl;
+
+      if (!targetUrl && id) {
+        targetUrl = `https://pixeldrain.com/api/file/${id}`;
+      }
+
+      if (!targetUrl) {
+        return res.status(400).send('No video source provided');
+      }
+
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'no-cache, no-store');
+
+      const { spawn } = await import('child_process');
+      const ffmpeg = spawn('ffmpeg', [
+        '-reconnect', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '5',
+        '-i', targetUrl,
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-f', 'mp4',
+        '-movflags', 'frag_keyframe+empty_moov+default_base_moov',
+        'pipe:1'
+      ]);
+
+      ffmpeg.stdout.pipe(res);
+
+      req.on('close', () => {
+        try {
+          ffmpeg.kill('SIGKILL');
+        } catch (_) {}
+      });
+    } catch (err: any) {
+      console.error('[PlayStream] Error:', err);
+      if (!res.headersSent) res.status(500).send('Streaming error');
+    }
+  });
+
   // Direct download endpoint with Content-Disposition
   app.get('/api/download', async (req, res) => {
     const id = req.query.id as string | undefined;

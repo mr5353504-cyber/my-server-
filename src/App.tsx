@@ -19,7 +19,9 @@ import {
   Sparkles,
   Key,
   FolderOpen,
-  Layers
+  Layers,
+  Smartphone,
+  Tv
 } from 'lucide-react';
 import { APP_CONFIG } from './config';
 
@@ -130,6 +132,7 @@ export default function App() {
   const [cinemaPlayerOpen, setCinemaPlayerOpen] = useState(false);
   const [playerVideoUrl, setPlayerVideoUrl] = useState('');
   const [playerMovieTitle, setPlayerMovieTitle] = useState('');
+  const [videoError, setVideoError] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Copy Feedback
@@ -179,7 +182,13 @@ export default function App() {
   const openCinema = (url: string, title?: string) => {
     setPlayerVideoUrl(url);
     setPlayerMovieTitle(title || 'Movie Stream');
+    setVideoError(false);
     setCinemaPlayerOpen(true);
+  };
+
+  const extractFileId = (url: string) => {
+    const match = url.match(/pixeldrain\.com\/(?:api\/file|u)\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : '';
   };
 
   const updateStepStatus = useCallback((stepId: number, status: StepStatus, errorMessage?: string) => {
@@ -874,14 +883,30 @@ export default function App() {
                   <span>কপি</span>
                 </button>
               </div>
-              <div className="pt-1">
+              <div className="pt-1 flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => openCinema(activeResult.watchUrl, activeResult.title)}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  সরাসরি ফুল স্ক্রিনে দেখুন (Play in Cinema Player)
+                  সরাসরি ফুল স্ক্রিনে দেখুন (Cinema Player)
                 </button>
+                <a
+                  href={`vlc://${activeResult.watchUrl}`}
+                  className="px-3 py-2 bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 border border-amber-500/40 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+                  title="VLC প্লেয়ারে ১-ক্লিকে সরাসরি দেখুন"
+                >
+                  <Play className="w-3.5 h-3.5 fill-amber-300" />
+                  <span>VLC Player</span>
+                </a>
+                <a
+                  href={`intent:${activeResult.watchUrl}#Intent;type=video/*;action=android.intent.action.VIEW;end`}
+                  className="px-3 py-2 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+                  title="মোবাইলে যেকোনো ভিডিও প্লেয়ারে সরাসরি চালান"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>MX / Phone Player</span>
+                </a>
               </div>
             </div>
 
@@ -1018,27 +1043,115 @@ export default function App() {
               </button>
             </div>
 
-            <div className="aspect-video bg-black flex items-center justify-center">
+            {/* MKV Notice Banner */}
+            <div className="px-5 py-2.5 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between text-xs text-amber-300/90 gap-2">
+              <span className="flex items-center gap-1.5 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                ব্রাউজারে MKV / Dolby Audio সরাসরি না চললে নিচের <strong>VLC বা MX Player</strong> বাটনে ক্লিক করে সরাসরি স্ট্রিম করুন।
+              </span>
+            </div>
+
+            {/* Video Viewport */}
+            <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
               <video
                 ref={videoRef}
                 src={playerVideoUrl}
                 controls
                 autoPlay
                 playsInline
+                onError={() => setVideoError(true)}
                 className="w-full h-full object-contain"
               />
+
+              {/* Video Error / Codec Incompatibility Overlay */}
+              {videoError && (
+                <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-10 space-y-4">
+                  <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                    <Tv className="w-6 h-6" />
+                  </div>
+                  <div className="max-w-md space-y-1">
+                    <h4 className="text-base font-bold text-white">MKV / Dolby অডিও ফরম্যাট সনাক্ত হয়েছে</h4>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      গুগল ক্রোম ও মোবাইল ব্রাউজার এই ফরম্যাটটি সরাসরি চালাতে পারে না। <strong>VLC বা MX Player</strong>-এ এটি কোনো ডাউনলোড ছাড়াই স্মুথভাবে চলবে!
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <a
+                      href={`vlc://${playerVideoUrl}`}
+                      className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-900/40 transition-transform active:scale-95"
+                    >
+                      <Play className="w-4 h-4 fill-white" />
+                      <span>VLC Player-এ সরাসরি দেখুন</span>
+                    </a>
+                    <a
+                      href={`intent:${playerVideoUrl}#Intent;type=video/*;action=android.intent.action.VIEW;end`}
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-indigo-900/40 transition-transform active:scale-95"
+                    >
+                      <Smartphone className="w-4 h-4" />
+                      <span>MX / Phone Player-এ চালান</span>
+                    </a>
+                    <a
+                      href={`${playerVideoUrl}?download`}
+                      download
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-900/40 transition-transform active:scale-95"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>সরাসরি ডাউনলোড (2.3 GB)</span>
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="px-5 py-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span className="font-mono">Pixeldrain High-Speed Range Stream</span>
-              <a
-                href={playerVideoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
-              >
-                Direct Stream URL <ExternalLink className="w-3 h-3" />
-              </a>
+            {/* Quick Action Bar under video */}
+            <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href={`vlc://${playerVideoUrl}`}
+                  className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg flex items-center gap-1.5 font-semibold transition-colors"
+                  title="VLC প্লেয়ারে সরাসরি দেখতে ক্লিক করুন"
+                >
+                  <Play className="w-3.5 h-3.5 fill-amber-300" />
+                  <span>VLC Player</span>
+                </a>
+                <a
+                  href={`intent:${playerVideoUrl}#Intent;type=video/*;action=android.intent.action.VIEW;end`}
+                  className="px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 rounded-lg flex items-center gap-1.5 font-semibold transition-colors"
+                  title="মোবাইলে যেকোনো ভিডিও প্লেয়ারে সরাসরি চালান"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>MX Player</span>
+                </a>
+                <a
+                  href={`${playerVideoUrl}?download`}
+                  download
+                  className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg flex items-center gap-1.5 font-semibold transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Direct Download</span>
+                </a>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleCopy(playerVideoUrl, 'stream-modal')}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg flex items-center gap-1.5 transition-colors"
+                >
+                  {copiedField === 'stream-modal' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedField === 'stream-modal' ? 'কপি হয়েছে' : 'Stream Link কপি'}</span>
+                </button>
+                {extractFileId(playerVideoUrl) && (
+                  <a
+                    href={`https://pixeldrain.com/u/${extractFileId(playerVideoUrl)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 border border-slate-700 rounded-lg flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>Pixeldrain Web</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
