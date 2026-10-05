@@ -1,37 +1,29 @@
-name: Automated Media Processing Pipeline
+name: Pixeldrain Cloud Ingest Pipeline
 
 on:
   repository_dispatch:
     types: [process_video, sync_supabase]
   workflow_dispatch:
     inputs:
-      action_type:
-        description: 'Action Type (process_video or sync_supabase)'
-        required: false
-        default: 'process_video'
-        type: string
-      tmdb_id:
-        description: 'TMDb Movie/Show ID (e.g. 157336)'
+      source_url:
+        description: '3rd-Party Movie Download Link or Video Stream'
         required: true
         type: string
-      source_url:
-        description: 'Direct Source Video URL, Embed Link, or HLS .m3u8'
+      tmdb_id:
+        description: 'TMDb Movie ID (e.g. 157336)'
         required: false
+        default: '157336'
         type: string
-      stream_url:
-        description: 'Stream URL for Supabase sync'
-        required: false
-        type: string
-      download_url:
-        description: 'Download URL for Supabase sync'
+      movie_title:
+        description: 'Movie Title'
         required: false
         type: string
 
 jobs:
-  process-and-ingest:
-    name: Transcode & Ingest Media (Hyper-Speed MTProto 2GB)
+  ingest-to-pixeldrain:
+    name: Download & Ingest to Pixeldrain
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 60
 
     steps:
       - name: Checkout Repository
@@ -42,35 +34,23 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install System Dependencies (ffmpeg & aria2)
+      - name: Install System Dependencies (aria2c & curl)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg aria2
+          sudo apt-get install -y --no-install-recommends aria2 curl
 
-      - name: Verify CLI Tools
-        run: |
-          ffmpeg -version | head -n 1
-          aria2c --version | head -n 1
-
-      - name: Install Python Packages (Inline Installation)
+      - name: Install Python Requirements
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir requests telethon cryptg supabase yt-dlp "curl_cffi>=0.7.0"
+          pip install -r requirements.txt
 
-      - name: Execute Media Processing Engine
+      - name: Run Pixeldrain Ingest Engine
         env:
-          ACTION_TYPE: ${{ github.event.action || github.event.inputs.action_type || 'process_video' }}
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          SOURCE_URL: ${{ github.event.client_payload.source_url || github.event.inputs.source_url }}
+          TMDB_ID: ${{ github.event.client_payload.tmdb_id || github.event.inputs.tmdb_id || '157336' }}
+          MOVIE_TITLE: ${{ github.event.client_payload.movie_title || github.event.inputs.movie_title }}
+          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY || '1d5668c3-d5f4-44ef-8665-93e5c683a724' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          TMDB_ID: ${{ github.event.client_payload.tmdb_id || github.event.inputs.tmdb_id }}
-          SOURCE_URL: ${{ github.event.client_payload.source_url || github.event.inputs.source_url }}
-          STREAM_URL: ${{ github.event.client_payload.stream_url || github.event.inputs.stream_url }}
-          DOWNLOAD_URL: ${{ github.event.client_payload.download_url || github.event.inputs.download_url }}
-          WEB_APP_URL: ${{ secrets.WEB_APP_URL || github.event.client_payload.web_app_url || github.event.inputs.web_app_url }}
         run: |
           python -u process.py
