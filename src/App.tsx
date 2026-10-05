@@ -79,6 +79,16 @@ const INITIAL_STEPS: PipelineStep[] = [
 
 const DEFAULT_HISTORY: HistoryItem[] = [
   {
+    id: 'UUB7kYhc',
+    tmdbId: '157336',
+    title: 'Unabomber (2026) 1080p Dual Audio NF',
+    watchUrl: 'https://pixeldrain.com/api/file/UUB7kYhc',
+    downloadUrl: 'https://pixeldrain.com/api/file/UUB7kYhc?download',
+    fileId: 'UUB7kYhc',
+    size: '2204.48 MB (2.2 GB)',
+    createdAt: new Date().toISOString()
+  },
+  {
     id: 'EA62BtD8',
     tmdbId: 'EA62BtD8',
     title: 'Bethlehem Kudumba Unit (480p Dual Audio)',
@@ -86,17 +96,7 @@ const DEFAULT_HISTORY: HistoryItem[] = [
     downloadUrl: 'https://pixeldrain.com/api/file/EA62BtD8?download',
     fileId: 'EA62BtD8',
     size: '710.2 MB',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '157336',
-    tmdbId: '157336',
-    title: 'Interstellar (1080p Ultra High Quality)',
-    watchUrl: 'https://pixeldrain.com/api/file/EA62BtD8',
-    downloadUrl: 'https://pixeldrain.com/api/file/EA62BtD8?download',
-    fileId: 'EA62BtD8',
-    size: '1.85 GB',
-    createdAt: new Date(Date.now() - 3600000).toISOString()
+    createdAt: new Date(Date.now() - 1800000).toISOString()
   }
 ];
 
@@ -389,26 +389,48 @@ export default function App() {
               updateStepStatus(4, 'completed');
               updateStepStatus(5, 'completed');
 
-              const watchUrl = `https://pixeldrain.com/api/file/${id}`;
-              const downloadUrl = `https://pixeldrain.com/api/file/${id}?download`;
+              try {
+                const wfRes = await fetch(`/api/workflow-result?run_id=${latestRun.id}`);
+                const wfData = await wfRes.json();
+                if (wfData.success && wfData.file_id) {
+                  const resultObj = {
+                    title: wfData.title || title,
+                    watchUrl: wfData.watch_url,
+                    downloadUrl: wfData.download_url,
+                    fileId: wfData.file_id,
+                    size: wfData.size_mb
+                  };
+                  setActiveResult(resultObj);
+                  saveToHistory({
+                    id: wfData.file_id,
+                    tmdbId: wfData.tmdb_id || id,
+                    ...resultObj,
+                    createdAt: new Date().toISOString()
+                  });
+                  return;
+                }
+              } catch (err) {
+                console.error('[WorkflowResult] Fetch error:', err);
+              }
 
-              const resultObj = {
+              // Fallback
+              const fallbackUrl = `https://pixeldrain.com/api/file/${id}`;
+              const fallbackResult = {
                 title,
-                watchUrl,
-                downloadUrl,
+                watchUrl: fallbackUrl,
+                downloadUrl: `${fallbackUrl}?download`,
                 fileId: id
               };
-
-              setActiveResult(resultObj);
+              setActiveResult(fallbackResult);
               saveToHistory({
                 id,
                 tmdbId: id,
-                ...resultObj,
+                ...fallbackResult,
                 createdAt: new Date().toISOString()
               });
             } else {
               // Runner failed
-              updateStepStatus(4, 'failed', 'Pixeldrain আপলোডে সমস্যা হয়েছে। আপনার ইমেইল ভেরিফাই করা আছে কি না বা লিংকটি সরাসরি ভিডিও কি না তা নিশ্চিত করুন।');
+              updateStepStatus(4, 'failed', 'Pixeldrain আপলোডে সমস্যা হয়েছে।');
             }
           }
         }
