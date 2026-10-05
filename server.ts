@@ -19,6 +19,74 @@ async function startServer() {
     return processLinkHandler(req, res);
   });
 
+  // Extract real Pixeldrain output JSON from GitHub Actions workflow run logs
+  app.get('/api/workflow-result', async (req, res) => {
+    try {
+      const runId = req.query.run_id as string;
+      const PAT = process.env.VITE_GITHUB_PAT || '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';
+      const OWNER = process.env.VITE_GITHUB_OWNER || 'mr5353504-cyber';
+      const REPO = process.env.VITE_GITHUB_REPO || 'my-server-';
+
+      let targetRunId = runId;
+      if (!targetRunId || targetRunId === 'latest') {
+        const runsResp = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/actions/runs?per_page=1`, {
+          headers: { Authorization: `Bearer ${PAT}`, 'User-Agent': 'Node' }
+        });
+        const runsData = await runsResp.json();
+        targetRunId = runsData.workflow_runs?.[0]?.id;
+      }
+
+      if (!targetRunId) {
+        return res.status(404).json({ error: 'No workflow run found' });
+      }
+
+      const jobsResp = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${targetRunId}/jobs`, {
+        headers: { Authorization: `Bearer ${PAT}`, 'User-Agent': 'Node' }
+      });
+      const jobsData = await jobsResp.json();
+      const jobId = jobsData.jobs?.[0]?.id;
+
+      if (!jobId) {
+        return res.status(404).json({ error: 'No job found for this run' });
+      }
+
+      const logRedirectResp = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/actions/jobs/${jobId}/logs`, {
+        headers: { Authorization: `Bearer ${PAT}`, 'User-Agent': 'Node' },
+        redirect: 'follow'
+      });
+
+      const logText = await logRedirectResp.text();
+      const lines = logText.split('\n');
+      let capturing = false;
+      let jsonLines: string[] = [];
+
+      for (const rawLine of lines) {
+        const cleanLine = rawLine.replace(/^\d{4}-\d{2}-\d{2}T[^\s]+\s*/, '');
+        if (cleanLine.includes('RESULT_JSON_START')) {
+          capturing = true;
+          continue;
+        }
+        if (cleanLine.includes('RESULT_JSON_END')) {
+          capturing = false;
+          break;
+        }
+        if (capturing) {
+          jsonLines.push(cleanLine);
+        }
+      }
+
+      if (jsonLines.length > 0) {
+        const parsed = JSON.parse(jsonLines.join('\n'));
+        return res.json({ success: true, run_id: targetRunId, ...parsed });
+      }
+
+      return res.status(404).json({ error: 'RESULT_JSON block not found in logs' });
+    } catch (err: any) {
+      console.error('[WorkflowResult] Error:', err);
+      return res.status(500).json({ error: err.message || 'Failed to extract workflow result' });
+    }
+  });
+
   // Lightweight HTTP Range Request streaming endpoint
   app.get('/api/stream', async (req, res) => {
     const id = req.query.id as string | undefined;
