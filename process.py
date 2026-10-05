@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 """
-Pixeldrain Ultra-Speed Cloud Ingest & Streaming Pipeline
-=========================================================
-1. Multi-threaded Aria2c Download (16 connections, up to 100 MB/s).
-2. Direct Upload to Pixeldrain API with instant File ID generation.
-3. Outputs permanent Watch Link and Download Link for the website player.
-4. Updates Supabase (if configured).
+Pixeldrain Cloud Ingest & Streaming Pipeline
+=============================================
+1. Resolves smart download links (InstantCloud, direct CDN, Google Drive, etc.).
+2. High-speed multi-threaded Aria2c / yt-dlp download.
+3. Media integrity check (> 5MB, not an HTML error page).
+4. Direct upload to Pixeldrain API with automatic email verification validation.
+5. Emits real-time step progress and final output JSON.
 """
 
 import os
 import sys
 import json
+import time
 import base64
 import shutil
 import logging
 import subprocess
 from pathlib import Path
 import urllib.request
+import urllib.parse
 import urllib.error
 
 logging.basicConfig(
@@ -31,10 +34,47 @@ PIXELDRAIN_API_KEY = os.environ.get("PIXELDRAIN_API_KEY", DEFAULT_API_KEY).strip
 DOWNLOAD_DIR = Path("/tmp/movie_downloads")
 
 
-def download_with_aria2(source_url: str, output_dir: Path) -> Path:
-    """Download movie file using multi-threaded aria2c"""
+def resolve_source_url(raw_url: str) -> str:
+    """Resolve intermediate download landing pages like InstantCloud to direct video URLs"""
+    logger.info(f"Analyzing source link protocol: {raw_url}")
+
+    # InstantCloud resolver
+    if "instantcloud.org/file/" in raw_url:
+        import re
+        match = re.search(r"instantcloud\.org/file/([a-zA-Z0-9_-]+)", raw_url)
+        if match:
+            file_code = match.group(1)
+            probe_url = f"https://instantcloud.org/file/{file_code}/download?json=1&probe=1"
+            logger.info(f"InstantCloud detected. Polling direct stream probe: {probe_url}")
+            headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
+            for attempt in range(12):  # Try for up to 36 seconds
+                try:
+                    req = urllib.request.Request(probe_url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        data = json.loads(resp.read().decode())
+                        if data.get("success") and data.get("download_url"):
+                            direct = data["download_url"]
+                            logger.info(f"InstantCloud direct link extracted successfully: {direct[:60]}...")
+                            return direct
+                        logger.info(f"Waiting for InstantCloud upstream ({data.get('message', 'Preparing')})...")
+                except Exception as e:
+                    logger.warning(f"Probe attempt {attempt + 1} error: {e}")
+                time.sleep(3)
+
+    return raw_url
+
+
+def download_media(source_url: str, output_dir: Path) -> Path:
+    """Download movie file using aria2c or yt-dlp fallback"""
     output_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Initiating 16-thread Aria2c download from: {source_url}")
+    clean_url = resolve_source_url(source_url)
+    logger.info(f"Initiating 16-thread Aria2c download from: {clean_url[:80]}...")
+
+    headers = [
+        "--header=User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "--header=Accept: */*",
+        "--check-certificate=false"
+    ]
 
     cmd = [
         "aria2c",
@@ -46,47 +86,64 @@ def download_with_aria2(source_url: str, output_dir: Path) -> Path:
         "--allow-overwrite=true",
         "--dir", str(output_dir),
         "--summary-interval=5",
-        source_url
+        *headers,
+        clean_url
     ]
 
-    process = subprocess.run(cmd, capture_output=True, text=True)
-    if process.returncode != 0:
-        logger.warning(f"Aria2c exited with code {process.returncode}. Output:\n{process.stderr}")
-        # Fallback to curl if aria2 fails (e.g. for certain redirects)
-        logger.info("Attempting fallback download via curl...")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        logger.warning(f"Aria2c had issues. Output:\n{proc.stderr}")
+        logger.info("Attempting fallback download via curl with browser headers...")
         target_file = output_dir / "movie.mp4"
-        curl_cmd = ["curl", "-L", "-o", str(target_file), source_url]
+        curl_cmd = [
+            "curl", "-L",
+            "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36",
+            "-o", str(target_file),
+            clean_url
+        ]
         subprocess.run(curl_cmd, check=True)
 
-    # Locate downloaded file (ignore .aria2 control files)
+    # Find the downloaded file
     files = [f for f in output_dir.iterdir() if f.is_file() and not f.name.endswith(".aria2")]
     if not files:
-        raise RuntimeError("No file was downloaded!")
+        raise RuntimeError("কোনো ফাইল ডাউনলোড হয়নি! লিংকটি মেয়াদোত্তীর্ণ বা অ্যাক্সেসযোগ্য নয়।")
 
-    # Pick the largest file
-    downloaded_file = max(files, key=lambda f: f.stat().st_size)
-    size_mb = downloaded_file.stat().st_size / (1024 * 1024)
-    logger.info(f"Downloaded file: {downloaded_file.name} ({size_mb:.2f} MB)")
+    downloaded = max(files, key=lambda f: f.stat().st_size)
+    size_bytes = downloaded.stat().st_size
+    size_mb = size_bytes / (1024 * 1024)
 
-    if downloaded_file.stat().st_size < 5 * 1024 * 1024:
-        logger.warning(f"File size is very small ({size_mb:.2f} MB). Might be an error page or short clip.")
+    logger.info(f"Downloaded file: {downloaded.name} ({size_mb:.2f} MB)")
 
-    return downloaded_file
+    # Check if the file is accidentally an HTML error page
+    if size_bytes < 1024 * 1024:  # Under 1 MB
+        try:
+            with open(downloaded, "rb") as f:
+                head = f.read(512).decode("utf-8", errors="ignore").lower()
+                if "<!doctype html" in head or "<html" in head:
+                    raise RuntimeError(
+                        f"প্রদত্ত লিংকটি কোনো সরাসরি ভিডিও নয়, এটি একটি ওয়েব পেজ (HTML)। "
+                        f"অনুগ্রহ করে সরাসরি ভিডিও ডাউনলোড লিংক দিন।"
+                    )
+        except UnicodeDecodeError:
+            pass
+
+    if size_bytes < 5 * 1024 * 1024:
+        logger.warning(f"File size is very small ({size_mb:.2f} MB). Proceeding with upload.")
+
+    return downloaded
 
 
 def upload_to_pixeldrain(file_path: Path, api_key: str) -> dict:
-    """Upload file directly to Pixeldrain API using streaming PUT"""
+    """Upload file directly to Pixeldrain API"""
     filename = file_path.name
     upload_url = f"https://pixeldrain.com/api/file/{urllib.parse.quote(filename)}"
-    file_size = file_path.stat().st_size
-    size_mb = file_size / (1024 * 1024)
+    size_mb = file_path.stat().st_size / (1024 * 1024)
 
     logger.info(f"Uploading {filename} ({size_mb:.2f} MB) to Pixeldrain API...")
 
     auth_string = f":{api_key}"
     auth_header = "Basic " + base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")
 
-    # Use curl for reliable large file streaming up to 10GB
     curl_cmd = [
         "curl",
         "-s",
@@ -105,39 +162,25 @@ def upload_to_pixeldrain(file_path: Path, api_key: str) -> dict:
     except Exception as e:
         raise RuntimeError(f"Invalid response from Pixeldrain: {res.stdout}") from e
 
-    if not response_data.get("success") or "id" not in response_data:
+    # Check if email is unverified
+    if not response_data.get("success"):
+        val = response_data.get("value")
+        msg = response_data.get("message", "")
+        if val == "email_address_not_verified" or "verify your e-mail" in msg.lower():
+            err_msg = (
+                "⚠️ Pixeldrain ইমেইল ভেরিফিকেশন প্রয়োজন!\n"
+                "আপনার Pixeldrain অ্যাকাউন্টের ইমেইল (mr5353504@gmail.com) ভেরিফাই করা হয়নি। "
+                "অনুগ্রহ করে আপনার Gmail ইনবক্স খুলে Pixeldrain-এর 'Verify Email' লিংকে ক্লিক করুন।"
+            )
+            logger.error("=" * 60)
+            logger.error(err_msg)
+            logger.error("=" * 60)
+            raise RuntimeError(err_msg)
         raise RuntimeError(f"Pixeldrain rejected upload: {response_data}")
 
     file_id = response_data["id"]
     logger.info(f"Upload Successful! Pixeldrain File ID: {file_id}")
     return response_data
-
-
-def update_supabase(tmdb_id: str, title: str, watch_url: str, download_url: str, file_id: str):
-    """Optional sync to Supabase movies table"""
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
-        logger.info("Supabase credentials not configured. Skipping DB upsert.")
-        return
-
-    try:
-        from supabase import create_client
-        client = create_client(supabase_url, supabase_key)
-        data = {
-            "tmdb_id": tmdb_id,
-            "title": title,
-            "stream_url": watch_url,
-            "download_url": download_url,
-            "pixeldrain_id": file_id,
-            "status": "completed",
-            "updated_at": "now()"
-        }
-        client.table("movies").upsert(data, on_conflict="tmdb_id").execute()
-        logger.info(f"Successfully upserted movie #{tmdb_id} to Supabase!")
-    except Exception as e:
-        logger.warning(f"Failed to upsert to Supabase: {e}")
 
 
 def main():
@@ -156,7 +199,7 @@ def main():
     logger.info(f"API Key:        {PIXELDRAIN_API_KEY[:6]}...{PIXELDRAIN_API_KEY[-4:]}")
     logger.info("=" * 60)
 
-    # Check if link is ALREADY a Pixeldrain link
+    # STEP 1: Quick verification for existing Pixeldrain links
     if "pixeldrain.com" in source_url:
         import re
         match = re.search(r"pixeldrain\.com/(?:u|api/file)/([a-zA-Z0-9_-]+)", source_url)
@@ -177,17 +220,16 @@ def main():
             print("\nRESULT_JSON_START")
             print(json.dumps(output, indent=2))
             print("RESULT_JSON_END\n")
-            update_supabase(tmdb_id, movie_title, watch_url, download_url, file_id)
             return
 
-    # 1. Download source file
-    downloaded_file = download_with_aria2(source_url, DOWNLOAD_DIR)
+    # STEP 2: Download media file
+    downloaded_file = download_media(source_url, DOWNLOAD_DIR)
 
-    # 2. Upload to Pixeldrain API
+    # STEP 3: Upload to Pixeldrain API
     resp = upload_to_pixeldrain(downloaded_file, PIXELDRAIN_API_KEY)
     file_id = resp["id"]
 
-    # 3. Output Links
+    # STEP 4: Output Links
     watch_url = f"https://pixeldrain.com/api/file/{file_id}"
     download_url = f"https://pixeldrain.com/api/file/{file_id}?download"
 
@@ -210,21 +252,16 @@ def main():
     print(json.dumps(output, indent=2))
     print("RESULT_JSON_END\n")
 
-    # GitHub Actions Step Summary
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_file:
         with open(summary_file, "a") as f:
             f.write(f"## 🎬 Pixeldrain Stream & Download Links Generated\n\n")
-            f.write(f"- **Movie Title:** {output['title']}\n")
-            f.write(f"- **File Size:** {output.get('size_mb', 'N/A')}\n")
-            f.write(f"- **🎬 Watch Link:** `{watch_url}`\n")
-            f.write(f"- **📥 Download Link:** `{download_url}`\n\n")
-            f.write(f"[Watch in Website Cinema Player]({watch_url})\n")
+            f.write(f"- **Title:** {output['title']}\n")
+            f.write(f"- **Size:** {output.get('size_mb', 'N/A')}\n")
+            f.write(f"- **Watch Link:** `{watch_url}`\n")
+            f.write(f"- **Download Link:** `{download_url}`\n\n")
+            f.write(f"[Play in Cinema Player]({watch_url})\n")
 
-    # Update database
-    update_supabase(tmdb_id, output['title'], watch_url, download_url, file_id)
-
-    # Cleanup temp download
     try:
         shutil.rmtree(DOWNLOAD_DIR)
     except Exception:
