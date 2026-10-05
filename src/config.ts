@@ -37,13 +37,15 @@ export const APP_CONFIG = {
     }
     return DEFAULT_INTERNAL_PAT;
   },
-  DEFAULT_PIXELDRAIN_API_KEY: '1d5668c3-d5f4-44ef-8665-93e5c683a724',
+  DEFAULT_PIXELDRAIN_API_KEY: '55e00a65-998d-4b39-b343-60b2b98f2835',
   get PIXELDRAIN_API_KEY(): string {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('PIXELDRAIN_API_KEY');
-      if (stored && stored.trim()) return stored.trim();
+      if (stored && stored.trim() && stored !== '1d5668c3-d5f4-44ef-8665-93e5c683a724') {
+        return stored.trim();
+      }
     }
-    return '1d5668c3-d5f4-44ef-8665-93e5c683a724';
+    return '55e00a65-998d-4b39-b343-60b2b98f2835';
   },
   SUPABASE_URL: 'https://tmomuyxckjhlsjfbzfvz.supabase.co'
 };
