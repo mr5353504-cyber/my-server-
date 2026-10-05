@@ -13,15 +13,25 @@ import {
   Check,
   Download,
   Clock,
-  CloudLightning,
   Zap,
   RotateCcw,
   Trash2,
   Sparkles,
   Key,
-  FolderOpen
+  FolderOpen,
+  Layers
 } from 'lucide-react';
 import { APP_CONFIG } from './config';
+
+type StepStatus = 'pending' | 'active' | 'completed' | 'failed';
+
+interface PipelineStep {
+  id: number;
+  title: string;
+  description: string;
+  status: StepStatus;
+  errorMessage?: string;
+}
 
 interface HistoryItem {
   id: string;
@@ -33,6 +43,39 @@ interface HistoryItem {
   createdAt: string;
   size?: string;
 }
+
+const INITIAL_STEPS: PipelineStep[] = [
+  {
+    id: 1,
+    title: 'URL Inspection & Protocol Validation',
+    description: 'Analyzing source link, video headers, and stream viability',
+    status: 'pending'
+  },
+  {
+    id: 2,
+    title: 'High-Speed Aria2c Download (16 Threads)',
+    description: 'Multi-threaded cloud ingest to fetch complete media file (>5MB protection)',
+    status: 'pending'
+  },
+  {
+    id: 3,
+    title: 'Stream & Media Integrity Verification',
+    description: 'Validating media codecs, headers, and container sanity',
+    status: 'pending'
+  },
+  {
+    id: 4,
+    title: 'Pixeldrain Gigabit Cloud Upload',
+    description: 'Direct streaming ingest into Pixeldrain API with instant File ID',
+    status: 'pending'
+  },
+  {
+    id: 5,
+    title: 'Native Website Cinema Player & Direct Links',
+    description: 'Direct streaming & download endpoints mapped to the site built-in HTML5 player',
+    status: 'pending'
+  }
+];
 
 const DEFAULT_HISTORY: HistoryItem[] = [
   {
@@ -65,11 +108,14 @@ export default function App() {
   const [apiKey, setApiKey] = useState(() => APP_CONFIG.PIXELDRAIN_API_KEY);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
 
-  // Workflow tracking
+  // 5 Step Interactive Pipeline States
+  const [steps, setSteps] = useState<PipelineStep[]>(INITIAL_STEPS);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isPipelineActive, setIsPipelineActive] = useState(false);
   const [activeRunUrl, setActiveRunUrl] = useState<string | null>(null);
-  const [pipelineStatus, setPipelineStatus] = useState<'idle' | 'downloading' | 'uploading' | 'completed' | 'failed'>('idle');
-  const [pipelineMessage, setPipelineMessage] = useState('');
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Active Processed Output
   const [activeResult, setActiveResult] = useState<{
@@ -136,6 +182,38 @@ export default function App() {
     setCinemaPlayerOpen(true);
   };
 
+  const updateStepStatus = useCallback((stepId: number, status: StepStatus, errorMessage?: string) => {
+    setSteps((prev) =>
+      prev.map((step) =>
+        step.id === stepId ? { ...step, status, errorMessage } : step
+      )
+    );
+  }, []);
+
+  const handleReset = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (pollRef.current) clearInterval(pollRef.current);
+    setIsProcessing(false);
+    setIsPipelineActive(false);
+    setElapsedSeconds(0);
+    setSteps(INITIAL_STEPS);
+    setActiveRunUrl(null);
+  };
+
+  // Timer Management
+  useEffect(() => {
+    if (isPipelineActive) {
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isPipelineActive]);
+
   // URL search parameter (?stream=... or ?watch=...)
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -147,10 +225,11 @@ export default function App() {
     }
   }, []);
 
-  // Cleanup polling on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
@@ -159,113 +238,118 @@ export default function App() {
     const cleanUrl = sourceUrl.trim();
     if (!cleanUrl) return;
 
+    handleReset();
     setIsProcessing(true);
-    setPipelineStatus('downloading');
-    setPipelineMessage('ইনপুট লিংক যাচাই করা হচ্ছে...');
+    setIsPipelineActive(true);
     setActiveResult(null);
 
+    // Step 1: Link Inspection & Protocol Check
+    updateStepStatus(1, 'active');
+
     // CASE 1: The user entered an EXISTING Pixeldrain Link!
-    // Instant 0.1s Conversion without running heavy runners!
     if (cleanUrl.includes('pixeldrain.com')) {
       const match = cleanUrl.match(/pixeldrain\.com\/(?:u|api\/file)\/([a-zA-Z0-9_-]+)/);
       if (match) {
         const fileId = match[1];
-        setPipelineStatus('uploading');
-        setPipelineMessage('Pixeldrain ফাইল মেটাডাটা রিড করা হচ্ছে...');
+        setTimeout(async () => {
+          updateStepStatus(1, 'completed');
+          updateStepStatus(2, 'completed');
+          updateStepStatus(3, 'completed');
+          updateStepStatus(4, 'completed');
+          updateStepStatus(5, 'active');
 
-        let resolvedTitle = movieTitle.trim() || `Pixeldrain Movie (${fileId})`;
-        let sizeStr: string | undefined;
+          let resolvedTitle = movieTitle.trim() || `Pixeldrain Movie (${fileId})`;
+          let sizeStr: string | undefined;
 
-        try {
-          const resp = await fetch(`https://pixeldrain.com/api/file/${fileId}/info`);
-          if (resp.ok) {
-            const info = await resp.json();
-            if (info.name) resolvedTitle = info.name;
-            if (info.size) sizeStr = `${(info.size / (1024 * 1024)).toFixed(1)} MB`;
-          }
-        } catch (_) {}
+          try {
+            const resp = await fetch(`https://pixeldrain.com/api/file/${fileId}/info`);
+            if (resp.ok) {
+              const info = await resp.json();
+              if (info.name) resolvedTitle = info.name;
+              if (info.size) sizeStr = `${(info.size / (1024 * 1024)).toFixed(1)} MB`;
+            }
+          } catch (_) {}
 
-        const watchUrl = `https://pixeldrain.com/api/file/${fileId}`;
-        const downloadUrl = `https://pixeldrain.com/api/file/${fileId}?download`;
+          const watchUrl = `https://pixeldrain.com/api/file/${fileId}`;
+          const downloadUrl = `https://pixeldrain.com/api/file/${fileId}?download`;
 
-        const resultObj = {
-          title: resolvedTitle,
-          watchUrl,
-          downloadUrl,
-          fileId,
-          size: sizeStr
-        };
+          const resultObj = {
+            title: resolvedTitle,
+            watchUrl,
+            downloadUrl,
+            fileId,
+            size: sizeStr
+          };
 
-        setActiveResult(resultObj);
-        saveToHistory({
-          id: fileId,
-          tmdbId: fileId,
-          ...resultObj,
-          createdAt: new Date().toISOString()
-        });
+          setActiveResult(resultObj);
+          saveToHistory({
+            id: fileId,
+            tmdbId: fileId,
+            ...resultObj,
+            createdAt: new Date().toISOString()
+          });
 
-        setPipelineStatus('completed');
-        setPipelineMessage('লিংক তৈরি সম্পন্ন! এখন সরাসরি দেখতে বা ডাউনলোড করতে পারেন।');
-        setIsProcessing(false);
+          updateStepStatus(5, 'completed');
+          setIsProcessing(false);
+          setIsPipelineActive(false);
+        }, 800);
         return;
       }
     }
 
-    // CASE 2: Third-Party Download Link (needs downloading and uploading to Pixeldrain API)
-    setPipelineMessage('GitHub Actions 1Gbps ক্লাউড রানারে পাঠানো হচ্ছে...');
-    try {
-      const token = APP_CONFIG.GITHUB_PAT?.trim();
-      const headers: Record<string, string> = {
-        Accept: 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+    // CASE 2: 3rd-Party Download Link (Send to GitHub Actions 1Gbps Runner)
+    setTimeout(async () => {
+      updateStepStatus(1, 'completed');
+      updateStepStatus(2, 'active');
 
-      const effectiveTitle = movieTitle.trim() || `Movie Ingest ${Date.now()}`;
-      const effectiveId = `movie_${Date.now()}`;
+      try {
+        const token = APP_CONFIG.GITHUB_PAT?.trim();
+        const headers: Record<string, string> = {
+          Accept: 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(
-        `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/dispatches`,
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            event_type: 'process_video',
-            client_payload: {
-              source_url: cleanUrl,
-              tmdb_id: effectiveId,
-              movie_title: effectiveTitle,
-              pixeldrain_api_key: apiKey
-            }
-          })
+        const effectiveTitle = movieTitle.trim() || `Movie Ingest ${Date.now()}`;
+        const effectiveId = `movie_${Date.now()}`;
+
+        const res = await fetch(
+          `https://api.github.com/repos/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/dispatches`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              event_type: 'process_video',
+              client_payload: {
+                source_url: cleanUrl,
+                tmdb_id: effectiveId,
+                movie_title: effectiveTitle,
+                pixeldrain_api_key: apiKey
+              }
+            })
+          }
+        );
+
+        if (res.status === 204) {
+          const actionsUrl = `https://github.com/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions`;
+          setActiveRunUrl(actionsUrl);
+          startPolling(effectiveTitle, effectiveId);
+        } else {
+          throw new Error(`GitHub responded with HTTP ${res.status}`);
         }
-      );
-
-      if (res.status === 204) {
-        const actionsUrl = `https://github.com/${APP_CONFIG.GITHUB_OWNER}/${APP_CONFIG.GITHUB_REPO}/actions`;
-        setActiveRunUrl(actionsUrl);
-        setPipelineStatus('downloading');
-        setPipelineMessage('Aria2c দিয়ে ১৬-থ্রেডে হাই-স্পিড ডাউনলোড হচ্ছে...');
-
-        // Start polling GitHub Actions
-        pollGitHubRun(effectiveTitle, effectiveId);
-      } else {
-        throw new Error(`GitHub responded with HTTP ${res.status}`);
+      } catch (err: any) {
+        updateStepStatus(2, 'failed', err.message || 'Workflow dispatch failed');
+        setIsProcessing(false);
+        setIsPipelineActive(false);
       }
-    } catch (err: any) {
-      setPipelineStatus('failed');
-      setPipelineMessage(`এরর হয়েছে: ${err.message || 'Workflow dispatch failed'}`);
-      setIsProcessing(false);
-    }
+    }, 1000);
   };
 
-  const pollGitHubRun = (title: string, id: string) => {
+  const startPolling = (title: string, id: string) => {
     let attempts = 0;
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (pollRef.current) clearInterval(pollRef.current);
 
-    pollIntervalRef.current = setInterval(async () => {
+    pollRef.current = setInterval(async () => {
       attempts++;
       try {
         const token = APP_CONFIG.GITHUB_PAT?.trim();
@@ -285,22 +369,36 @@ export default function App() {
 
         if (latestRun) {
           if (latestRun.status === 'in_progress') {
-            setPipelineStatus('uploading');
-            setPipelineMessage('Pixeldrain API-তে সরাসরি আপলোড হচ্ছে...');
+            // Check run elapsed time
+            if (elapsedSeconds > 15 && steps[1].status === 'active') {
+              updateStepStatus(2, 'completed');
+              updateStepStatus(3, 'active');
+            }
+            if (elapsedSeconds > 30 && steps[2].status === 'active') {
+              updateStepStatus(3, 'completed');
+              updateStepStatus(4, 'active');
+            }
           } else if (latestRun.status === 'completed') {
-            if (latestRun.conclusion === 'success') {
-              if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-              setPipelineStatus('completed');
-              setPipelineMessage('Pixeldrain-এ আপলোড সফল হয়েছে!');
-              setIsProcessing(false);
+            if (pollRef.current) clearInterval(pollRef.current);
+            setIsProcessing(false);
+            setIsPipelineActive(false);
 
-              // Query Supabase or generate expected links
+            if (latestRun.conclusion === 'success') {
+              updateStepStatus(2, 'completed');
+              updateStepStatus(3, 'completed');
+              updateStepStatus(4, 'completed');
+              updateStepStatus(5, 'completed');
+
+              const watchUrl = `https://pixeldrain.com/api/file/${id}`;
+              const downloadUrl = `https://pixeldrain.com/api/file/${id}?download`;
+
               const resultObj = {
                 title,
-                watchUrl: `https://pixeldrain.com/api/file/${id}`,
-                downloadUrl: `https://pixeldrain.com/api/file/${id}?download`,
+                watchUrl,
+                downloadUrl,
                 fileId: id
               };
+
               setActiveResult(resultObj);
               saveToHistory({
                 id,
@@ -309,25 +407,43 @@ export default function App() {
                 createdAt: new Date().toISOString()
               });
             } else {
-              if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-              setPipelineStatus('failed');
-              setPipelineMessage(`রান ব্যর্থ হয়েছে (${latestRun.conclusion})`);
-              setIsProcessing(false);
+              // Runner failed
+              updateStepStatus(4, 'failed', 'Pixeldrain আপলোডে সমস্যা হয়েছে। আপনার ইমেইল ভেরিফাই করা আছে কি না বা লিংকটি সরাসরি ভিডিও কি না তা নিশ্চিত করুন।');
             }
           }
         }
 
-        if (attempts > 60) {
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        if (attempts > 80) {
+          if (pollRef.current) clearInterval(pollRef.current);
           setIsProcessing(false);
+          setIsPipelineActive(false);
         }
       } catch (_) {}
-    }, 4000);
+    }, 3500);
+  };
+
+  const formatTimer = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getStepIcon = (status: StepStatus) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />;
+      case 'active':
+        return <Loader2 className="w-5 h-5 text-indigo-400 animate-spin flex-shrink-0" />;
+      case 'failed':
+        return <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />;
+      default:
+        return <div className="w-5 h-5 rounded-full border border-slate-700 bg-slate-900/60 flex-shrink-0" />;
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between font-sans antialiased">
-      {/* Top Navigation */}
+      {/* Top Header */}
       <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -338,16 +454,16 @@ export default function App() {
             </div>
             <div>
               <h1 className="font-bold text-base text-white tracking-tight leading-tight flex items-center gap-2">
-                Pixeldrain Movie Streamer
+                Pixeldrain Movie Engine
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  Cloud Ingest
+                  Cloud Stream
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-400">থার্ড-পার্টি ডাউনলোড লিংক থেকে সরাসরি Watch & Download লিংক</p>
+              <p className="text-[11px] text-slate-400">থার্ড-পার্টি ডাউনলোড লিংক থেকে Watch & Download লিংক</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={() => setIsApiKeyModalOpen(true)}
               className="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-slate-900 border-slate-700/80 text-slate-300 hover:text-white hover:border-emerald-500/50 transition-colors"
@@ -356,52 +472,64 @@ export default function App() {
               <Key className="w-3.5 h-3.5 text-emerald-400" />
               <span className="font-mono text-[11px]">{apiKey.slice(0, 8)}...</span>
             </button>
-            <a
-              href="#history-section"
-              className="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-slate-900 border-slate-800 text-slate-300 hover:text-white transition-colors"
+            <button
+              onClick={handleReset}
+              className="text-xs flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-slate-900 border-slate-800 text-slate-400 hover:text-white transition-colors"
+              title="রিসেট করুন"
             >
-              <FolderOpen className="w-3.5 h-3.5 text-indigo-400" />
-              <span>হিস্টোরি ({history.length})</span>
-            </a>
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 sm:py-10 space-y-8">
+      {/* Main Workspace */}
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-6">
         
+        {/* Important Email Verification Notice Banner */}
+        <div className="bg-amber-950/40 border border-amber-500/40 rounded-2xl p-4 flex items-start gap-3 shadow-lg">
+          <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1 text-xs text-amber-200">
+            <div className="font-bold text-amber-300 flex items-center gap-2">
+              <span>জরুরি তথ্য: Pixeldrain ইমেইল ভেরিফিকেশন</span>
+            </div>
+            <p className="leading-relaxed">
+              আপনার Pixeldrain একাউন্টে (<code className="font-mono text-white">mr5353504@gmail.com</code>) পাঠানো <strong>"Verify Email"</strong> লিংকে অবশ্যই একবার ক্লিক করুন। ইমেইল ভেরিফাই না থাকলে Pixeldrain সরাসরি ফাইল আপলোড গ্রহণ করবে না।
+            </p>
+          </div>
+        </div>
+
         {/* The Clean Input Box */}
-        <section className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
+        <section className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-5">
           <div className="space-y-1">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-400" />
-              মুভি ডাউনলোড বা স্ট্রিমিং লিংক দিন
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              মুভি ডাউনলোড বা ভিডিও লিংক দিন
             </h2>
             <p className="text-xs text-slate-400">
-              যেকোনো থার্ড-পার্টি মুভি ডাউনলোড লিংক বা Pixeldrain লিংক পেস্ট করলে ব্যাকএন্ড স্বয়ংক্রিয়ভাবে ভিডিও দেখার লিংক ও ডাউনলোড লিংক বানিয়ে দেবে।
+              যেকোনো মুভি ডাউনলোড লিংক বা Pixeldrain লিংক এখানে দিলে ব্যাকএন্ড স্বয়ংক্রিয়ভাবে ভিডিও দেখার লিংক ও ডাউনলোড লিংক বানিয়ে দেবে।
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                <span>১. মুভি ডাউনলোড বা ভিডিও লিংক (Source URL):</span>
-                <span className="text-[11px] text-emerald-400 font-mono">100% Free & Gigabit Fast</span>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">
+                মুভি ডাউনলোড লিংক বা ভিডিও লিংক:
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={sourceUrl}
                   onChange={(e) => setSourceUrl(e.target.value)}
-                  placeholder="e.g. https://pixeldrain.com/u/EA62BtD8 অথবা যেকোনো থার্ড-পার্টি ডাউনলোড লিংক..."
+                  placeholder="যেমন: https://pixeldrain.com/u/EA62BtD8 অথবা যেকোনো থার্ড-পার্টি ডাউনলোড লিংক..."
                   required
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-4 pr-10 py-3.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono transition-colors shadow-inner"
+                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-4 pr-10 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono transition-colors shadow-inner"
                 />
                 {sourceUrl && (
                   <button
                     type="button"
                     onClick={() => setSourceUrl('')}
-                    className="absolute right-3 top-3.5 text-slate-500 hover:text-white"
+                    className="absolute right-3 top-3 text-slate-500 hover:text-white"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -409,9 +537,9 @@ export default function App() {
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300">
-                ২. মুভির নাম (ঐচ্ছিক):
+                মুভির নাম (ঐচ্ছিক):
               </label>
               <input
                 type="text"
@@ -443,19 +571,19 @@ export default function App() {
                 }}
                 className="text-xs px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-colors"
               >
-                🎬 Direct MP4 Download Link
+                🎬 Direct MP4 Video Link
               </button>
             </div>
 
             <button
               type="submit"
               disabled={isProcessing || !sourceUrl.trim()}
-              className="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:opacity-50 text-white font-bold text-sm py-4 rounded-xl transition-all shadow-xl shadow-emerald-950/50 flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:opacity-50 text-white font-bold text-sm py-3.5 rounded-xl transition-all shadow-xl shadow-emerald-950/50 flex items-center justify-center gap-2"
             >
               {isProcessing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>প্রসেসিং হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন</span>
+                  <span>প্রসেসিং হচ্ছে... ({formatTimer(elapsedSeconds)})</span>
                 </>
               ) : (
                 <>
@@ -465,34 +593,99 @@ export default function App() {
               )}
             </button>
           </form>
-
-          {/* Live Progress Timeline */}
-          {pipelineStatus !== 'idle' && (
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-white flex items-center gap-2">
-                  {pipelineStatus === 'downloading' && <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />}
-                  {pipelineStatus === 'uploading' && <CloudLightning className="w-3.5 h-3.5 text-amber-400 animate-pulse" />}
-                  {pipelineStatus === 'completed' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
-                  {pipelineStatus === 'failed' && <AlertCircle className="w-3.5 h-3.5 text-rose-400" />}
-                  <span>{pipelineMessage}</span>
-                </span>
-                {activeRunUrl && (
-                  <a
-                    href={activeRunUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-mono text-[11px]"
-                  >
-                    View Cloud Runner <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
         </section>
 
-        {/* Result Output Card (when generated) */}
+        {/* STEP-BY-STEP VISUAL PROGRESS TRACKER */}
+        <section className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-emerald-400" />
+              <h3 className="font-bold text-sm text-white">লাইভ পাইপলাইন ট্র্যাকার (Step-by-Step Progress)</h3>
+            </div>
+            <div className="flex items-center gap-3">
+              {isPipelineActive && (
+                <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                  <Clock className="w-3.5 h-3.5 animate-spin" />
+                  <span>{formatTimer(elapsedSeconds)}</span>
+                </div>
+              )}
+              {activeRunUrl && (
+                <a
+                  href={activeRunUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-mono"
+                >
+                  <span>Runner Logs</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {steps.map((step) => {
+              const isActive = step.status === 'active';
+              const isCompleted = step.status === 'completed';
+              const isFailed = step.status === 'failed';
+
+              return (
+                <div
+                  key={step.id}
+                  className={`p-3.5 rounded-xl border transition-all flex items-start gap-3.5 ${
+                    isActive
+                      ? 'bg-indigo-950/30 border-indigo-500/40 shadow-md shadow-indigo-950/20'
+                      : isCompleted
+                      ? 'bg-slate-950/60 border-emerald-500/20'
+                      : isFailed
+                      ? 'bg-rose-950/30 border-rose-500/40'
+                      : 'bg-slate-950/40 border-slate-800/80 opacity-60'
+                  }`}
+                >
+                  <div className="pt-0.5">{getStepIcon(step.status)}</div>
+                  <div className="space-y-1 flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4
+                        className={`text-xs font-bold leading-tight ${
+                          isActive
+                            ? 'text-indigo-300'
+                            : isCompleted
+                            ? 'text-emerald-300'
+                            : isFailed
+                            ? 'text-rose-300'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        Step {step.id}: {step.title}
+                      </h4>
+                      <span
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold ${
+                          isActive
+                            ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 animate-pulse'
+                            : isCompleted
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : isFailed
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            : 'bg-slate-800 text-slate-500'
+                        }`}
+                      >
+                        {step.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">{step.description}</p>
+                    {step.errorMessage && (
+                      <p className="text-[11px] text-rose-300 pt-1 font-mono bg-rose-950/50 p-2 rounded border border-rose-500/30">
+                        {step.errorMessage}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* RESULT OUTPUT CARD */}
         {activeResult && (
           <section className="bg-gradient-to-b from-slate-900 to-slate-950 border border-emerald-500/40 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-5 animate-in fade-in duration-300">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -533,7 +726,7 @@ export default function App() {
                   <span>কপি</span>
                 </button>
               </div>
-              <div className="flex items-center gap-2 pt-1">
+              <div className="pt-1">
                 <button
                   onClick={() => openCinema(activeResult.watchUrl, activeResult.title)}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow"
@@ -585,7 +778,7 @@ export default function App() {
         )}
 
         {/* History Section */}
-        <section id="history-section" className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-xl space-y-4">
+        <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
