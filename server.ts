@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
 import { resolveVideoUrl, streamVideoRange } from './api/stream';
+import processLinkHandler from './api/process-link';
 
 dotenv.config();
 
@@ -12,6 +13,11 @@ async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
 
   app.use(express.json());
+
+  // 3rd-Party Link Processor & WebTorrent metadata resolver
+  app.all('/api/process-link', async (req, res) => {
+    return processLinkHandler(req, res);
+  });
 
   // Lightweight HTTP Range Request streaming endpoint
   app.get('/api/stream', async (req, res) => {
