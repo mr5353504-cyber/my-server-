@@ -3,9 +3,9 @@
 Pixeldrain Cloud Ingest & Streaming Pipeline
 =============================================
 1. Resolves smart download links (InstantCloud, direct CDN, Google Drive, etc.).
-2. High-speed multi-threaded Aria2c / yt-dlp download.
-3. Media integrity check (> 5MB, not an HTML error page).
-4. Direct upload to Pixeldrain API with verified API key.
+2. High-speed multi-threaded Aria2c download with fallback.
+3. Media integrity check (> 1MB, not an HTML error page).
+4. Direct high-speed upload to Pixeldrain API with verified API key.
 5. Emits real-time step progress and final output JSON.
 """
 
@@ -13,7 +13,6 @@ import os
 import sys
 import json
 import time
-import base64
 import shutil
 import logging
 import subprocess
@@ -73,7 +72,7 @@ def resolve_source_url(raw_url: str) -> tuple[str, str | None]:
                 time.sleep(3)
 
             raise RuntimeError(
-                "InstantCloud সার্ভার তাদের ব্যাকএন্ড (Google Photos/Drive) থেকে লিঙ্ক তৈরি করতে দেরি করছে বা টাইমআউট হয়েছে। "
+                "InstantCloud সার্ভার থেকে গুগল ফটোজের ভিডিও লিঙ্ক এখনও প্রস্তুত হয়নি (Time out)। "
                 "অনুগ্রহ করে ১ মিনিট পর আবার ট্রাই করুন অথবা সরাসরি ভিডিও লিঙ্ক ব্যবহার করুন।"
             )
 
@@ -106,7 +105,7 @@ def download_media(source_url: str, output_dir: Path) -> Path:
     ]
 
     if suggested_filename:
-        # Sanitize filename
+        # Sanitize filename for local storage
         safe_name = suggested_filename.replace("/", "_").replace("\\", "_")
         cmd.extend(["--out", safe_name])
 
@@ -155,35 +154,39 @@ def download_media(source_url: str, output_dir: Path) -> Path:
 def upload_to_pixeldrain(file_path: Path, api_key: str) -> dict:
     """Upload file directly to Pixeldrain API"""
     filename = file_path.name
-    upload_url = f"https://pixeldrain.com/api/file/{urllib.parse.quote(filename)}"
+    # URL encode filename fully so brackets, spaces, and Unicode never break curl
+    clean_encoded_name = urllib.parse.quote(filename, safe="")
+    upload_url = f"https://pixeldrain.com/api/file/{clean_encoded_name}"
     size_mb = file_path.stat().st_size / (1024 * 1024)
 
-    logger.info(f"Uploading {filename} ({size_mb:.2f} MB) to Pixeldrain API...")
+    logger.info(f"Uploading {filename} ({size_mb:.2f} MB) to Pixeldrain Cloud...")
 
-    auth_string = f":{api_key}"
-    auth_header = "Basic " + base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")
-
+    # Using -u :API_KEY with --globoff to prevent URL bracket expansion issues
     curl_cmd = [
         "curl",
-        "-s",
+        "-sS",
+        "--globoff",
+        "--show-error",
+        "-u", f":{api_key}",
         "-T", str(file_path),
-        "-H", f"Authorization: {auth_header}",
         "-H", "User-Agent: MovieStreamEngine/1.0",
         upload_url
     ]
 
     res = subprocess.run(curl_cmd, capture_output=True, text=True)
     if res.returncode != 0:
-        raise RuntimeError(f"Pixeldrain upload failed: {res.stderr}")
+        logger.error(f"Curl error (code {res.returncode}): {res.stderr}")
+        raise RuntimeError(f"Pixeldrain upload failed: {res.stderr or res.stdout}")
 
     try:
         response_data = json.loads(res.stdout)
     except Exception as e:
         raise RuntimeError(f"Invalid response from Pixeldrain: {res.stdout}") from e
 
-    # Check if email is unverified or rejected
-    if not response_data.get("success"):
-        raise RuntimeError(f"Pixeldrain rejected upload: {response_data}")
+    # Successful Pixeldrain response has "id" field
+    if "id" not in response_data:
+        err_msg = response_data.get("message") or response_data.get("value") or str(response_data)
+        raise RuntimeError(f"Pixeldrain rejected upload: {err_msg}")
 
     file_id = response_data["id"]
     logger.info(f"Upload Successful! Pixeldrain File ID: {file_id}")
