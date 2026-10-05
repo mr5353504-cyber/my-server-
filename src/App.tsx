@@ -571,12 +571,12 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setSourceUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4');
-                  setMovieTitle('Big Buck Bunny Open Film');
+                  setSourceUrl('https://instantcloud.org/file/LvbbPejV/download');
+                  setMovieTitle('Unabomber (1080p Dual Audio NF)');
                 }}
-                className="text-xs px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-colors"
+                className="text-xs px-2.5 py-1 rounded-lg bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-300 border border-indigo-700/60 transition-colors"
               >
-                🎬 Direct MP4 Video Link
+                ☁️ InstantCloud Link (Unabomber 2.15GB)
               </button>
             </div>
 
