@@ -14,6 +14,17 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Global CORS and Preflight handler to prevent 405 Method Not Allowed
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // 3rd-Party Link Processor & WebTorrent metadata resolver
   app.all('/api/process-link', async (req, res) => {
     return processLinkHandler(req, res);
@@ -44,9 +55,10 @@ async function startServer() {
     }
   };
 
-  // Start Ingest Endpoint (Supports Local Runner + Instant Cache + GitHub Fallback)
-  app.post('/api/start-ingest', async (req, res) => {
-    const { source_url, movie_title, pixeldrain_api_key, github_pat } = req.body || {};
+  // Start Ingest Endpoint (Supports GET, POST, Local Runner, Instant Cache, GitHub Fallback)
+  app.all('/api/start-ingest', async (req, res) => {
+    const payload = req.method === 'POST' ? req.body : req.query;
+    const { source_url, movie_title, pixeldrain_api_key, github_pat } = payload || {};
     const cleanUrl = (source_url || '').trim();
     const effectiveTitle = (movie_title || '').trim() || 'Processed Movie';
 
