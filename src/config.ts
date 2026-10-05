@@ -1,4 +1,4 @@
-// Protected internal token resolver (obfuscated from automated bots & scrapers)
+// Protected internal token resolver
 const _decodeToken = (encodedParts: string[]): string => {
   try {
     const combined = encodedParts.join('');
@@ -37,20 +37,13 @@ export const APP_CONFIG = {
     }
     return DEFAULT_INTERNAL_PAT;
   },
-  TELEGRAM_CHANNEL_ID: '-1004408587176',
-  TELEGRAM_CHANNEL_USERNAME: 'server7766',
-  SUPABASE_URL: 'https://tmomuyxckjhlsjfbzfvz.supabase.co',
-  get STREAMER_URL(): string {
-    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STREAMER_URL) {
-      return import.meta.env.VITE_STREAMER_URL.trim().replace(/\/$/, '');
-    }
+  DEFAULT_PIXELDRAIN_API_KEY: '1d5668c3-d5f4-44ef-8665-93e5c683a724',
+  get PIXELDRAIN_API_KEY(): string {
     if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem('APP_STREAMER_URL');
-        if (stored && stored.startsWith('http')) return stored.trim().replace(/\/$/, '');
-      } catch (_) {}
+      const stored = localStorage.getItem('PIXELDRAIN_API_KEY');
+      if (stored && stored.trim()) return stored.trim();
     }
-    return '';
+    return '1d5668c3-d5f4-44ef-8665-93e5c683a724';
   },
+  SUPABASE_URL: 'https://tmomuyxckjhlsjfbzfvz.supabase.co'
 };
-
