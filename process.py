@@ -29,7 +29,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("PixeldrainEngine")
 
-DEFAULT_API_KEY = "1d5668c3-d5f4-44ef-8665-93e5c683a724"
+DEFAULT_API_KEY = "55e00a65-998d-4b39-b343-60b2b98f2835"
 PIXELDRAIN_API_KEY = os.environ.get("PIXELDRAIN_API_KEY", DEFAULT_API_KEY).strip()
 DOWNLOAD_DIR = Path("/tmp/movie_downloads")
 
