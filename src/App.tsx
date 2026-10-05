@@ -26,9 +26,11 @@ import {
   Calendar,
   Layers,
   Trash2,
-  Plus
+  Plus,
+  Sparkles
 } from 'lucide-react';
 import { APP_CONFIG } from './config';
+import { LinkProcessorModal } from './components/LinkProcessorModal';
 
 type StepStatus = 'pending' | 'active' | 'completed' | 'failed';
 
@@ -284,6 +286,9 @@ export default function App() {
   const [streamerUrlInput, setStreamerUrlInput] = useState(() => APP_CONFIG.STREAMER_URL);
   const [streamerTestStatus, setStreamerTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [streamerTestMessage, setStreamerTestMessage] = useState('');
+
+  // 3rd-Party Link Processor & WebTorrent P2P Modal State
+  const [isLinkProcessorOpen, setIsLinkProcessorOpen] = useState(false);
 
   const openDownloadModal = (id?: string) => {
     const effectiveId = id || tmdbIdInput.trim() || '157336';
@@ -628,6 +633,20 @@ export default function App() {
   // Timers & Polling
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-listen to URL parameters (?stream=... or ?processor=1)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const streamParam = params.get('stream');
+      const shouldOpenProcessor = params.get('processor');
+      if (streamParam) {
+        openCinemaPlayer(undefined, streamParam);
+      } else if (shouldOpenProcessor === '1' || shouldOpenProcessor === 'true') {
+        setIsLinkProcessorOpen(true);
+      }
+    }
+  }, []);
 
   // Toast
   const [toast, setToast] = useState<ToastState>({
@@ -1317,6 +1336,15 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2.5">
             <button
+              onClick={() => setIsLinkProcessorOpen(true)}
+              title="Process 3rd-party download link into Watch & Download URLs"
+              className="text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all border bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/40 text-emerald-300 font-medium"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Link Processor</span>
+              <span className="sm:hidden">P2P</span>
+            </button>
+            <button
               onClick={() => {
                 setStreamerUrlInput(APP_CONFIG.STREAMER_URL);
                 setStreamerTestStatus('idle');
@@ -1353,6 +1381,34 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col gap-6">
+        {/* Quick Link Processor Banner */}
+        <div className="bg-gradient-to-r from-emerald-950/60 via-slate-900 to-indigo-950/40 border border-emerald-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm text-white flex items-center gap-2">
+                3rd-Party Link Processor & WebTorrent P2P
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  Vercel Free Ready
+                </span>
+              </h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Pixeldrain, Magnet, Torrent বা Direct লিংক দিলে সাইট তৈরি করে দেবে Watch Link ও 1-Click Download Link!
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsLinkProcessorOpen(true)}
+            className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-emerald-950 flex items-center justify-center gap-2 flex-shrink-0"
+          >
+            <span>Open Link Converter</span>
+            <Zap className="w-3.5 h-3.5 fill-current" />
+          </button>
+        </div>
+
         {/* Source URL Form */}
         <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl">
           <form id="pipeline-form" onSubmit={handleSubmit} className="space-y-4">
@@ -2616,6 +2672,13 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 3rd-Party Link Processor & WebTorrent P2P Modal */}
+      <LinkProcessorModal
+        isOpen={isLinkProcessorOpen}
+        onClose={() => setIsLinkProcessorOpen(false)}
+        onOpenCinemaPlayer={(url, title) => openCinemaPlayer(undefined, url)}
+      />
 
     </div>
   );
