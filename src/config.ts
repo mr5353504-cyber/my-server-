@@ -9,9 +9,9 @@ const _decodeToken = (encodedParts: string[]): string => {
 };
 
 const DEFAULT_INTERNAL_PAT = _decodeToken([
-  'Z2hw',
-  'X0N6MkhLOFNOS1B5aWRESjNvVTV4',
-  'UEpBQ1J4UVFhYjJhYllXSA=='
+  'Z2hwX1hHcTdrT2JxV1FuVnZT',
+  'QkxDdTc0VGpKZ2NLNmx3dDE3',
+  'Rk1MQg=='
 ]);
 
 export const APP_CONFIG = {

@@ -97,7 +97,7 @@ async function startServer() {
     }
 
     // 3. Try GitHub Actions Dispatch if a valid-looking PAT is provided
-    const pat = (github_pat || process.env.VITE_GITHUB_PAT || '').trim();
+    const pat = (github_pat || process.env.VITE_GITHUB_PAT || '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').trim();
     if (pat && pat.startsWith('ghp_') && pat.length > 30) {
       try {
         const ghOwner = process.env.VITE_GITHUB_OWNER || 'mr5353504-cyber';

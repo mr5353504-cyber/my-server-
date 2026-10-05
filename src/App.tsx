@@ -864,13 +864,24 @@ export default function App() {
                   <Tv className="w-4 h-4" />
                   Pixeldrain অফিসিয়াল প্লেয়ার (Embedded Player):
                 </span>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  ID: {activeResult.fileId || extractFileId(activeResult.watchUrl)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    ID: {activeResult.fileId || extractFileId(activeResult.watchUrl)}
+                  </span>
+                  <a
+                    href={`https://pixeldrain.com/u/${activeResult.fileId || extractFileId(activeResult.watchUrl) || 'kJv3w6sY'}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
+                  >
+                    <span>নতুন ট্যাবে খুলুন</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
               </div>
-              <div className="aspect-video w-full bg-black">
+              <div className="w-full h-[380px] sm:h-[480px] bg-black">
                 <iframe
-                  src={`/api/pixeldrain-embed?id=${activeResult.fileId || extractFileId(activeResult.watchUrl) || 'kJv3w6sY'}&style=solarized_dark`}
+                  src={`https://pixeldrain.com/u/${activeResult.fileId || extractFileId(activeResult.watchUrl) || 'kJv3w6sY'}?embed&style=solarized_dark`}
                   className="w-full h-full border-0"
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
@@ -1093,10 +1104,10 @@ export default function App() {
             </div>
 
             {/* Viewport Area */}
-            <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
+            <div className="relative w-full h-[400px] sm:h-[480px] bg-black flex items-center justify-center overflow-hidden">
               {playerTab === 'embed' ? (
                 <iframe
-                  src={`/api/pixeldrain-embed?id=${extractFileId(playerVideoUrl) || 'kJv3w6sY'}&style=solarized_dark`}
+                  src={`https://pixeldrain.com/u/${extractFileId(playerVideoUrl) || 'kJv3w6sY'}?embed&style=solarized_dark`}
                   className="w-full h-full border-0"
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
@@ -1229,70 +1240,12 @@ export default function App() {
               </p>
             </div>
 
-            {/* GitHub PAT Input */}
-            <div className="space-y-2 border-t border-slate-800 pt-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-slate-300 font-semibold">GitHub Personal Access Token (PAT):</label>
-                {patStatus === 'valid' && (
-                  <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded font-mono">
-                    ✓ Token Active
-                  </span>
-                )}
-                {patStatus === 'invalid' && (
-                  <span className="text-[10px] text-rose-400 bg-rose-950/60 border border-rose-500/30 px-2 py-0.5 rounded font-mono">
-                    ✕ Bad / Expired PAT
-                  </span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={githubPat}
-                  onChange={(e) => {
-                    setGithubPat(e.target.value);
-                    setPatStatus('idle');
-                  }}
-                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                  className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const token = githubPat.trim();
-                    if (!token) {
-                      setPatStatus('invalid');
-                      return;
-                    }
-                    setPatStatus('testing');
-                    try {
-                      const r = await fetch('https://api.github.com/user', {
-                        headers: { Authorization: `Bearer ${token}` }
-                      });
-                      if (r.ok) {
-                        setPatStatus('valid');
-                      } else {
-                        setPatStatus('invalid');
-                      }
-                    } catch (_) {
-                      setPatStatus('invalid');
-                    }
-                  }}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg shrink-0"
-                >
-                  {patStatus === 'testing' ? 'যাচাই হচ্ছে...' : 'টেস্ট করুন'}
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                GitHub Actions রান করার জন্য আপনার GitHub PAT টোকেন প্রয়োজন (পারমিশন: <code>repo</code>, <code>workflow</code>)। টোকেন না থাকলে সরাসরি আমাদের সার্ভার ইঞ্জিন কাজ করবে।
-              </p>
-            </div>
-
             <div className="p-3 bg-emerald-950/40 border border-emerald-800/40 rounded-xl space-y-1 text-xs text-emerald-300">
               <div className="font-semibold flex items-center gap-1.5 text-emerald-200">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> লোকাল ক্লাউড ইঞ্জিন ব্যাকআপ সক্রিয়
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> GitHub Actions & ক্লাউড ইঞ্জিন সক্রিয়
               </div>
               <p className="text-[11px] text-emerald-400/80">
-                সার্ভারে ৫০৪ জিবি ডিস্ক স্পেস রয়েছে। GitHub টোকেন ছাড়াও সরাসরি সুপার-স্পিডে ডাউনলোড ও Pixeldrain আপলোড হবে!
+                আপনার GitHub Actions অটোমেশন (`mr5353504-cyber/my-server-`) সফলভাবে ইন্টিগ্রেট করা হয়েছে। কোনো ম্যানুয়াল টোকেন ইনপুট দেওয়ার প্রয়োজন নেই।
               </p>
             </div>
 
@@ -1301,7 +1254,6 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   localStorage.setItem('PIXELDRAIN_API_KEY', apiKey.trim());
-                  localStorage.setItem('APP_GITHUB_PAT', githubPat.trim());
                   setIsApiKeyModalOpen(false);
                 }}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg"
