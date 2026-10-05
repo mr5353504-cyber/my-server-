@@ -486,17 +486,22 @@ export default function App() {
       {/* Main Workspace */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-6">
         
-        {/* Important Email Verification Notice Banner */}
-        <div className="bg-amber-950/40 border border-amber-500/40 rounded-2xl p-4 flex items-start gap-3 shadow-lg">
-          <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1 text-xs text-amber-200">
-            <div className="font-bold text-amber-300 flex items-center gap-2">
-              <span>জরুরি তথ্য: Pixeldrain ইমেইল ভেরিফিকেশন</span>
+        {/* Account Verified Banner */}
+        <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+            <div className="space-y-0.5 text-xs">
+              <span className="font-bold text-emerald-300 flex items-center gap-2">
+                Pixeldrain অ্যাকাউন্ট সফলভাবে ভেরিফাই ও সংযুক্ত হয়েছে!
+              </span>
+              <p className="text-slate-400">
+                API Key: <code className="font-mono text-emerald-400">55e00a65-998d-4b39-b343-60b2b98f2835</code> • স্ট্রিমিং ও আপলোড পুরোপুরি রেডি।
+              </p>
             </div>
-            <p className="leading-relaxed">
-              আপনার Pixeldrain একাউন্টে (<code className="font-mono text-white">mr5353504@gmail.com</code>) পাঠানো <strong>"Verify Email"</strong> লিংকে অবশ্যই একবার ক্লিক করুন। ইমেইল ভেরিফাই না থাকলে Pixeldrain সরাসরি ফাইল আপলোড গ্রহণ করবে না।
-            </p>
           </div>
+          <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">
+            ACTIVE & READY
+          </span>
         </div>
 
         {/* The Clean Input Box */}
@@ -919,7 +924,7 @@ export default function App() {
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
               />
               <p className="text-[11px] text-slate-500">
-                ডিফল্টভাবে আপনার দেওয়া কি সেট করা আছে: <code className="text-emerald-400 font-mono">1d5668c3-d5f4-44ef-8665-93e5c683a724</code>
+                ডিফল্টভাবে আপনার দেওয়া কি সেট করা আছে: <code className="text-emerald-400 font-mono">55e00a65-998d-4b39-b343-60b2b98f2835</code>
               </p>
             </div>
 
